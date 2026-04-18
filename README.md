@@ -1,5 +1,7 @@
 # turbolab
 
+![demo](demo.webp)
+
 Self-hosted AI model server. Single binary, no cloud, no API keys. Run HuggingFace models locally with a web chat UI and an OpenAI-compatible API.
 
 ## How it works
@@ -65,6 +67,14 @@ turbolab serve --no-cpu-only     # Enable GPU layers
 
 - Python 3.x on PATH (for turboquant backend — `turbolab setup` handles the rest)
 - llama-server auto-installed on linux/amd64; elsewhere install from [llama.cpp releases](https://github.com/ggerganov/llama.cpp/releases)
+
+## Use Cases
+
+- **Homelab AI gateway** — serve models to your local network
+- **Dev agent harnesses** — OpenAI-compatible API makes swapping models trivial
+- **Local alternative to cloud** — no API keys, no data leaving your machine
+
+**Not network-safe** — no authentication or security middleware. Designed for trusted networks (homelab/localhost) only.
 
 ## Build from source
 
