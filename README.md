@@ -1,6 +1,15 @@
 # turbolab
 
-![demo](demo.webp)
+<table>
+  <tr>
+    <td><img src="demo1.webp" width="400"/></td>
+    <td><img src="demo2.webp" width="400"/></td>
+  </tr>
+  <tr>
+    <td><img src="demo3.webp" width="400"/></td>
+    <td><img src="demo4.webp" width="400"/></td>
+  </tr>
+</table>
 
 Self-hosted AI model server. Single binary, no cloud, no API keys. Run HuggingFace models locally with a web chat UI and an OpenAI-compatible API.
 
