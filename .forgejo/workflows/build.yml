@@ -1,0 +1,43 @@
+name: Build
+
+on:
+  push:
+    tags: ['v*']
+
+jobs:
+  build:
+    runs-on: linux-amd64
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+
+      - name: Build web
+        run: cd web && npm install && npm run build
+
+      - name: Build binary
+        run: go build -o turbolab .
+
+      - name: Release
+        run: |
+          TAG=${GITHUB_REF#refs/tags/}
+          RELEASE=$(curl -s -X POST "$FORGEJO_URL/api/v1/repos/$GITHUB_REPOSITORY/releases" \
+            -H "Authorization: token $GITHUB_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "{\"tag_name\":\"$TAG\",\"name\":\"$TAG\"}")
+          RELEASE_ID=$(echo "$RELEASE" | grep -o '"id":[0-9]*' | head -1 | cut -d: -f2)
+          curl -s -X POST "$FORGEJO_URL/api/v1/repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets?name=turbolab" \
+            -H "Authorization: token $GITHUB_TOKEN" \
+            -H "Content-Type: application/octet-stream" \
+            --data-binary @turbolab
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          FORGEJO_URL: http://192.168.0.51:3000
