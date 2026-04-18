@@ -34,10 +34,6 @@ Download the latest binary for your platform from [Releases](https://github.com/
 |---|---|
 | Linux x86_64 | `turbolab_linux_amd64` |
 | Linux ARM64 | `turbolab_linux_arm64` |
-| macOS Intel | `turbolab_darwin_amd64` |
-| macOS Apple Silicon | `turbolab_darwin_arm64` |
-| Windows x86_64 | `turbolab_windows_amd64` |
-| Windows ARM64 | `turbolab_windows_arm64` |
 
 ```bash
 chmod +x turbolab_linux_amd64

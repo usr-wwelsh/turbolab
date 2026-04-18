@@ -9,8 +9,6 @@ builds:
       - CGO_ENABLED=0
     goos:
       - linux
-      - darwin
-      - windows
     goarch:
       - amd64
       - arm64
@@ -34,4 +32,4 @@ changelog:
 
 release:
   footer: |
-    > Tested on Linux x86_64. Builds for other platforms are provided but not regularly tested.
+    > Linux only. x86_64 is the primary target; ARM64 is provided but less tested.
