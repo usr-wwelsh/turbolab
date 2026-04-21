@@ -1,5 +1,6 @@
 # turbolab
-
+[![turbolab status](https://vitals.wwel.sh/badge/proxmox/turbolab/status.svg)](https://github.com/usr-wwelsh/vitalSVG) [![turbolab cpu](https://vitals.wwel.sh/badge/proxmox/turbolab/cpu.svg)](https://github.com/usr-wwelsh/vitalSVG) [![turbolab ram](https://vitals.wwel.sh/badge/proxmox/turbolab/ram.svg)](https://github.com/usr-wwelsh/vitalSVG) [![turbolab uptime](https://vitals.wwel.sh/badge/proxmox/turbolab/uptime.svg)](https://github.com/usr-wwelsh/vitalSVG)
+[![turbolab cpu trend](https://vitals.wwel.sh/badge/proxmox/turbolab/sparkline.svg?metric=cpu)](https://github.com/usr-wwelsh/vitalSVG) [![turbolab ram trend](https://vitals.wwel.sh/badge/proxmox/turbolab/sparkline.svg?metric=ram)](https://github.com/usr-wwelsh/vitalSVG)
 <table>
   <tr>
     <td><img src="demo1.webp" width="400"/></td>
