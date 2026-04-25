@@ -33,12 +33,12 @@ var quantRank = map[string]int{
 }
 
 // IsGGUFRepo returns true if the model ID looks like a HuggingFace GGUF repository
-// (ends with -GGUF, -GGUF, etc.) rather than a local .gguf file path.
+// (contains -gguf in the name, but is not a local .gguf file path).
 func IsGGUFRepo(modelID string) bool {
 	upper := strings.ToUpper(modelID)
 	return strings.Contains(modelID, "/") &&
 		!strings.HasSuffix(upper, ".GGUF") &&
-		(strings.HasSuffix(upper, "-GGUF") || strings.Contains(upper, "-GGUF/"))
+		strings.Contains(upper, "-GGUF")
 }
 
 // SelectGGUF picks the best GGUF filename from a list of repo files given available RAM in GB.
