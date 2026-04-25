@@ -98,9 +98,24 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 	if err := os.Chmod(tmp.Name(), 0755); err != nil {
 		return err
 	}
-	if err := os.Rename(tmp.Name(), self); err != nil {
+
+	// Use Copy+Remove instead of Rename to handle cross-device moves
+	dst, err := os.OpenFile(self, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0755)
+	if err != nil {
 		return fmt.Errorf("replace failed (try sudo?): %w", err)
 	}
+	src, err := os.Open(tmp.Name())
+	if err != nil {
+		dst.Close()
+		return fmt.Errorf("replace failed (try sudo?): %w", err)
+	}
+	if _, err := io.Copy(dst, src); err != nil {
+		src.Close()
+		dst.Close()
+		return fmt.Errorf("replace failed (try sudo?): %w", err)
+	}
+	src.Close()
+	dst.Close()
 
 	fmt.Printf("Updated to %s\n", rel.TagName)
 	return nil
