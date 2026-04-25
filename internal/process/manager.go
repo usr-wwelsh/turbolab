@@ -43,7 +43,7 @@ func New(bin, llamaBin string, logOut io.Writer, port, bits, threads, ctxSize in
 		logOut = os.Stdout
 	}
 	if threads <= 0 {
-		threads = runtime.NumCPU()
+		threads = physicalCores()
 	}
 	if ctxSize <= 0 {
 		ctxSize = 4096
@@ -53,6 +53,41 @@ func New(bin, llamaBin string, logOut io.Writer, port, bits, threads, ctxSize in
 
 func threadStr(n int) string {
 	return fmt.Sprintf("%d", n)
+}
+
+// physicalCores returns the number of physical CPU cores on Linux,
+// falling back to runtime.NumCPU() (logical cores) on other platforms
+// or if /proc parsing fails. llama.cpp performs best with physical cores.
+func physicalCores() int {
+	if runtime.GOOS == "linux" {
+		data, err := os.ReadFile("/proc/cpuinfo")
+		if err == nil {
+			seen := map[string]struct{}{}
+			var phys, coreID string
+			for _, line := range strings.Split(string(data), "\n") {
+				k, v, ok := strings.Cut(line, ":")
+				if !ok {
+					if line == "" && phys != "" && coreID != "" {
+						seen[phys+"/"+coreID] = struct{}{}
+						phys, coreID = "", ""
+					}
+					continue
+				}
+				k = strings.TrimSpace(k)
+				v = strings.TrimSpace(v)
+				switch k {
+				case "physical id":
+					phys = v
+				case "core id":
+					coreID = v
+				}
+			}
+			if n := len(seen); n > 0 {
+				return n
+			}
+		}
+	}
+	return runtime.NumCPU()
 }
 
 func IsGGUF(modelID string) bool {
@@ -115,10 +150,9 @@ func (m *Manager) Start(modelID string) error {
 			"--threads", threadStr(m.threads),
 			"--threads-batch", threadStr(m.threads),
 			"--ctx-size", fmt.Sprintf("%d", m.ctxSize),
-			"--batch-size", "512",
-			"--ubatch-size", "1024",
-			"--cache-type-k", "q4_0",
-			"--cache-type-v", "q4_0",
+			"--batch-size", "2048",
+			"--ubatch-size", "512",
+			"--cache-reuse", "256",
 			"--flash-attn", "auto",
 		}
 		if m.cpuOnly {

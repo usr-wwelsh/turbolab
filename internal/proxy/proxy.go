@@ -18,7 +18,7 @@ type RecordFunc func(model string, promptTokens, completionTokens int)
 func New(targetPort int, record RecordFunc) http.Handler {
 	target, _ := url.Parse(fmt.Sprintf("http://localhost:%d", targetPort))
 	base := http.DefaultTransport.(*http.Transport).Clone()
-	base.ResponseHeaderTimeout = 120 * time.Second
+	base.ResponseHeaderTimeout = 15 * time.Minute
 	rp := &httputil.ReverseProxy{
 		Transport: base,
 		Director: func(r *http.Request) {
