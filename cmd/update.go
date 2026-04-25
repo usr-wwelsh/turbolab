@@ -99,23 +99,26 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Use Copy+Remove instead of Rename to handle cross-device moves
-	dst, err := os.OpenFile(self, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0755)
-	if err != nil {
-		return fmt.Errorf("replace failed (try sudo?): %w", err)
-	}
-	src, err := os.Open(tmp.Name())
-	if err != nil {
-		dst.Close()
-		return fmt.Errorf("replace failed (try sudo?): %w", err)
-	}
-	if _, err := io.Copy(dst, src); err != nil {
+	// Try rename first (works even if binary is running on Unix)
+	if err := os.Rename(tmp.Name(), self); err != nil {
+		// Fall back to copy if cross-device link error
+		src, err2 := os.Open(tmp.Name())
+		if err2 != nil {
+			return fmt.Errorf("replace failed (try sudo?): %w", err)
+		}
+		dst, err2 := os.OpenFile(self, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0755)
+		if err2 != nil {
+			src.Close()
+			return fmt.Errorf("replace failed (try sudo?): %w", err)
+		}
+		if _, err2 := io.Copy(dst, src); err2 != nil {
+			src.Close()
+			dst.Close()
+			return fmt.Errorf("replace failed (try sudo?): %w", err)
+		}
 		src.Close()
 		dst.Close()
-		return fmt.Errorf("replace failed (try sudo?): %w", err)
 	}
-	src.Close()
-	dst.Close()
 
 	fmt.Printf("Updated to %s\n", rel.TagName)
 	return nil
