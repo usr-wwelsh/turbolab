@@ -18,24 +18,25 @@ import (
 )
 
 type Manager struct {
-	mu          sync.Mutex
-	cmd         *exec.Cmd
-	cancel      context.CancelFunc
-	done        chan struct{}
-	bin         string
-	llamaBin    string
-	logOut      io.Writer
-	port        int
-	model       string
-	bits        int
-	threads     int
-	ctxSize     int
-	cpuOnly     bool
-	noQuant     bool
-	running     bool
-	loading     bool // true while downloading/starting, false once ready
-	intentional bool // true when stop is deliberate (not a crash)
-	crashCount  int  // consecutive fast crashes (< 5s uptime)
+	mu             sync.Mutex
+	cmd            *exec.Cmd
+	cancel         context.CancelFunc
+	done           chan struct{}
+	bin            string
+	llamaBin       string
+	logOut         io.Writer
+	port           int
+	model          string // resolved local path (passed to backend)
+	requestedModel string // original model ID as requested by caller
+	bits           int
+	threads        int
+	ctxSize        int
+	cpuOnly        bool
+	noQuant        bool
+	running        bool
+	loading        bool // true while downloading/starting, false once ready
+	intentional    bool // true when stop is deliberate (not a crash)
+	crashCount     int  // consecutive fast crashes (< 5s uptime)
 }
 
 func New(bin, llamaBin string, logOut io.Writer, port, bits, threads, ctxSize int, cpuOnly, noQuant bool) *Manager {
@@ -107,6 +108,10 @@ func (m *Manager) Start(modelID string) error {
 		}
 		m.mu.Lock()
 	}
+
+	// Track the original model ID before any resolution so Model() always
+	// returns what the caller requested, not the resolved local path.
+	m.requestedModel = modelID
 
 	// Resolve HuggingFace GGUF repos to a local file before starting.
 	// Release the mutex during the download so status checks don't block.
@@ -212,6 +217,7 @@ func (m *Manager) Start(modelID string) error {
 		m.mu.Lock()
 		crashed := m.running && !m.intentional
 		model := m.model
+		requested := m.requestedModel
 		uptime := time.Since(startedAt)
 		m.running = false
 		if crashed && uptime < 5*time.Second {
@@ -236,7 +242,11 @@ func (m *Manager) Start(modelID string) error {
 			}
 			fmt.Fprintf(lw, "%s process crashed, restarting in 2s...\n", prefix)
 			time.Sleep(2 * time.Second)
-			m.Start(model)
+			restartID := requested
+			if restartID == "" {
+				restartID = model
+			}
+			m.Start(restartID)
 		}
 	}()
 
@@ -297,6 +307,9 @@ func (m *Manager) Loading() bool {
 func (m *Manager) Model() string {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.requestedModel != "" {
+		return m.requestedModel
+	}
 	return m.model
 }
 
