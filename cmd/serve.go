@@ -326,6 +326,13 @@ func runServe(cmd *cobra.Command, args []string) error {
 			}
 			var payload map[string]any
 			if err := json.Unmarshal(body, &payload); err == nil {
+				// Switch model if client requested a different one
+				if reqModel, _ := payload["model"].(string); reqModel != "" && reqModel != mgr.Model() {
+					if err := mgr.Start(reqModel); err != nil {
+						http.Error(w, "failed to load model: "+err.Error(), http.StatusServiceUnavailable)
+						return
+					}
+				}
 				modified := false
 				if _, set := payload["max_tokens"]; !set {
 					cfg, _ := config.Load()
