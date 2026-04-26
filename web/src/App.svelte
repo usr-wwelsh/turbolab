@@ -104,7 +104,7 @@
     {#if tab === 'chat'}
       {#each sessions as s (s.id)}
         <div style="height:100%;display:{s.id===activeId?'flex':'none'};flex-direction:column;">
-          <Chat modelRunning={status?.running ?? false} bind:messages={s.messages} sessionId={s.id} onStreaming={(v) => inferring = v} />
+          <Chat modelRunning={status?.running ?? false} model={status?.model ?? ''} bind:messages={s.messages} sessionId={s.id} onStreaming={(v) => inferring = v} />
         </div>
       {/each}
     {:else if tab === 'models'}

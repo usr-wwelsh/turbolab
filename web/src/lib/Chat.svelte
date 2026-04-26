@@ -2,6 +2,7 @@
   import { chatStream } from './api.js'
 
   export let modelRunning = false
+  export let model = ''
   export let messages = []
   export const sessionId = 0
   export let onStreaming = (_) => {}
@@ -39,7 +40,7 @@
         assistantMsg.content += token
         messages = messages
         scrollBottom()
-      }, abortCtrl.signal)
+      }, abortCtrl.signal, model)
       if (!gotTokens) {
         assistantMsg.content = 'No response — model returned empty stream (may have crashed)'
         assistantMsg.error = true

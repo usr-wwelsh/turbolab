@@ -54,11 +54,11 @@ export async function getUsage(days = 30) {
   return r.json()
 }
 
-export async function chatStream(messages, onToken, signal) {
+export async function chatStream(messages, onToken, signal, model = 'default') {
   const r = await fetch('/v1/chat/completions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model: 'default', messages, stream: true }),
+    body: JSON.stringify({ model, messages, stream: true }),
     signal,
   })
   if (!r.ok) {
