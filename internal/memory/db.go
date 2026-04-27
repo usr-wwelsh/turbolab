@@ -74,6 +74,13 @@ func (d *DB) embedFunc() EmbedFunc {
 }
 
 func migrate(db *sql.DB) error {
+	// Recreate vectors table if it uses the old single-vector schema (no chunk_idx column).
+	var vectorCols int
+	db.QueryRow(`SELECT count(*) FROM pragma_table_info('vectors') WHERE name='chunk_idx'`).Scan(&vectorCols)
+	if vectorCols == 0 {
+		db.Exec(`DROP TABLE IF EXISTS vectors`)
+	}
+
 	stmts := []string{
 		`CREATE TABLE IF NOT EXISTS memories (
 			id TEXT PRIMARY KEY,
@@ -91,8 +98,10 @@ func migrate(db *sql.DB) error {
 			FOREIGN KEY (to_id) REFERENCES memories(id) ON DELETE CASCADE
 		)`,
 		`CREATE TABLE IF NOT EXISTS vectors (
-			memory_id TEXT PRIMARY KEY,
+			memory_id TEXT NOT NULL,
+			chunk_idx INTEGER NOT NULL DEFAULT 0,
 			embedding BLOB NOT NULL,
+			PRIMARY KEY (memory_id, chunk_idx),
 			FOREIGN KEY (memory_id) REFERENCES memories(id) ON DELETE CASCADE
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_memories_created ON memories(created_at DESC)`,
@@ -137,18 +146,49 @@ func (d *DB) Add(content, source string, tags []string) (*Memory, error) {
 	return m, nil
 }
 
+const chunkSize    = 1500
+const chunkOverlap = 200
+
+func chunkText(text string) []string {
+	if len(text) <= chunkSize {
+		return []string{text}
+	}
+	var chunks []string
+	for start := 0; start < len(text); {
+		end := start + chunkSize
+		if end > len(text) {
+			end = len(text)
+		}
+		chunks = append(chunks, text[start:end])
+		if end == len(text) {
+			break
+		}
+		start += chunkSize - chunkOverlap
+	}
+	return chunks
+}
+
 func (d *DB) embedAndRelate(id, content string) {
 	fn := d.embedFunc()
 	if fn == nil {
 		return
 	}
-	vec, err := fn(content)
-	if err != nil || len(vec) == 0 {
+	chunks := chunkText(content)
+	var firstVec []float32
+	for i, chunk := range chunks {
+		vec, err := fn(chunk)
+		if err != nil || len(vec) == 0 {
+			continue
+		}
+		d.db.Exec(`INSERT OR REPLACE INTO vectors (memory_id, chunk_idx, embedding) VALUES (?, ?, ?)`, id, i, float32ToBlob(vec))
+		if firstVec == nil {
+			firstVec = vec
+		}
+	}
+	if firstVec == nil {
 		return
 	}
-	d.db.Exec(`INSERT OR REPLACE INTO vectors (memory_id, embedding) VALUES (?, ?)`, id, float32ToBlob(vec))
-
-	scored, err := d.semanticSearchByVec(vec, 6, 0.75)
+	scored, err := d.semanticSearchByVec(firstVec, 6, 0.75)
 	if err != nil {
 		return
 	}
@@ -219,22 +259,26 @@ func (d *DB) semanticSearchByVec(vec []float32, limit int, minScore float32) ([]
 	}
 	defer rows.Close()
 
-	var scored []ScoredMemory
+	best := map[string]float32{}
 	for rows.Next() {
 		var memID string
 		var blob []byte
 		if err := rows.Scan(&memID, &blob); err != nil {
 			continue
 		}
-		stored := blobToFloat32(blob)
-		sim := cosineSim(vec, stored)
-		if sim >= minScore {
-			m, err := d.GetByID(memID)
-			if err != nil {
-				continue
-			}
-			scored = append(scored, ScoredMemory{Memory: *m, Score: sim})
+		sim := cosineSim(vec, blobToFloat32(blob))
+		if sim >= minScore && sim > best[memID] {
+			best[memID] = sim
 		}
+	}
+
+	var scored []ScoredMemory
+	for memID, score := range best {
+		m, err := d.GetByID(memID)
+		if err != nil {
+			continue
+		}
+		scored = append(scored, ScoredMemory{Memory: *m, Score: score})
 	}
 	sortScored(scored)
 	if len(scored) > limit {
@@ -457,6 +501,12 @@ func (d *DB) RebuildEmbeddings() {
 			d.embedAndRelate(it.id, it.content)
 		}
 	}()
+}
+
+func (d *DB) Stats() (total, vectorized int, err error) {
+	d.db.QueryRow(`SELECT count(*) FROM memories`).Scan(&total)
+	d.db.QueryRow(`SELECT count(DISTINCT memory_id) FROM vectors`).Scan(&vectorized)
+	return
 }
 
 func (d *DB) Close() error {

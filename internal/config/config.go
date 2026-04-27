@@ -16,19 +16,25 @@ type Config struct {
 	MaxTokens  int    `json:"max_tokens"`
 	Threads    int    `json:"threads"`
 	CtxSize    int    `json:"ctx_size"`
-	MCPEnabled    bool `json:"mcp_enabled"`
-	MemoryInject  bool `json:"memory_inject"`
+	MCPEnabled            bool    `json:"mcp_enabled"`
+	MemoryInject          bool    `json:"memory_inject"`
+	MemoryInjectMinScore  float32 `json:"memory_inject_min_score"`
+	IDModel               string  `json:"id_model"`
 }
+
+const DefaultIDModel = "ggml-org/e5-small-v2-Q8_0-GGUF"
 
 func defaults() Config {
 	return Config{
 		Model:     DefaultModel,
-		CPUOnly:   true,
-		Bits:      4,
-		Port:      7860,
-		MaxTokens: 2048,
-		Threads:   0, // 0 = auto (all cores)
-		CtxSize:   2048,
+		CPUOnly:              true,
+		Bits:                 4,
+		Port:                 7860,
+		MaxTokens:            2048,
+		Threads:              0,
+		CtxSize:              2048,
+		IDModel:              DefaultIDModel,
+		MemoryInjectMinScore: 0.75,
 	}
 }
 
@@ -72,6 +78,12 @@ func Load() (Config, error) {
 	}
 	if cfg.CtxSize == 0 {
 		cfg.CtxSize = 2048
+	}
+	if cfg.IDModel == "" {
+		cfg.IDModel = DefaultIDModel
+	}
+	if cfg.MemoryInjectMinScore <= 0 {
+		cfg.MemoryInjectMinScore = 0.75
 	}
 	return cfg, nil
 }

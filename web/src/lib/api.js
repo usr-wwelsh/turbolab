@@ -116,6 +116,12 @@ export async function rebuildEmbeddings() {
   return r.json()
 }
 
+export async function memoryStats() {
+  const r = await fetch('/api/memory/stats')
+  if (!r.ok) throw new Error(await r.text())
+  return r.json()
+}
+
 export async function convertFile(file) {
   const form = new FormData()
   form.append('file', file)

@@ -3,7 +3,7 @@
   import {
     listMemories, searchMemories, semanticSearchMemories, rebuildEmbeddings,
     addMemory, deleteMemory, relateMemories, unrelateMemories, getMemoryGraph,
-    convertFile, getConfig, saveConfig
+    convertFile, getConfig, saveConfig, memoryStats
   } from './api.js'
 
   export let status = null
@@ -48,13 +48,21 @@
   let memInject = false
   $: mcpUrl = `${location.origin}/mcp`
 
+  // Embed stats
+  let embedTotal = 0
+  let embedVectorized = 0
+  let rebuilding = false
+  let rebuildTimer = null
+
   onMount(async () => {
     await loadConfig()
     await loadMemories()
+    await refreshStats()
   })
 
   onDestroy(() => {
     if (animFrame) cancelAnimationFrame(animFrame)
+    if (rebuildTimer) clearInterval(rebuildTimer)
   })
 
   async function loadConfig() {
@@ -114,9 +122,28 @@
     }
   }
 
+  async function refreshStats() {
+    try {
+      const s = await memoryStats()
+      embedTotal = s.total
+      embedVectorized = s.vectorized
+    } catch {}
+  }
+
   async function doRebuildEmbeddings() {
     try {
       await rebuildEmbeddings()
+      rebuilding = true
+      if (rebuildTimer) clearInterval(rebuildTimer)
+      rebuildTimer = setInterval(async () => {
+        const prev = embedVectorized
+        await refreshStats()
+        if (embedVectorized >= embedTotal && embedTotal > 0) {
+          rebuilding = false
+          clearInterval(rebuildTimer)
+          rebuildTimer = null
+        }
+      }, 1500)
     } catch (e) {
       error = e.message
     }
@@ -379,7 +406,10 @@
     <span class="mcp-dot" class:on={memInject}></span>
     <span class="mcp-label">Auto-inject {memInject ? 'on' : 'off'}</span>
     <span class="inject-hint">— prepends relevant memories to every chat request</span>
-    <button class="rebuild-btn" on:click={doRebuildEmbeddings} title="embed all un-indexed memories">embed ↺</button>
+    <span class="embed-stats" class:warn={embedVectorized < embedTotal}>{embedVectorized}/{embedTotal} embedded</span>
+    <button class="rebuild-btn" class:rebuilding on:click={doRebuildEmbeddings} disabled={rebuilding} title="embed all un-indexed memories">
+      {rebuilding ? 'embedding…' : 'embed ↺'}
+    </button>
     <button class="toggle-btn" on:click={toggleInject}>{memInject ? 'disable' : 'enable'}</button>
   </div>
 
@@ -586,11 +616,16 @@
   .mem-date { color: #555; font-size: 0.75rem; margin-left: auto; }
   .tag { background: #1a2a1a; color: #6a6; font-size: 0.7rem; padding: 0.1rem 0.3rem; border-radius: 2px; }
   .score { color: #7cf; font-size: 0.72rem; font-family: monospace; }
+  .embed-stats { font-size: 0.75rem; color: #446; font-family: monospace; }
+  .embed-stats.warn { color: #a84; }
   .rebuild-btn {
     padding: 0.2rem 0.5rem; background: none; border: 1px solid #1a2a3a;
     color: #4a7a9a; cursor: pointer; font-family: monospace; font-size: 0.75rem; border-radius: 3px;
   }
-  .rebuild-btn:hover { color: #7cf; border-color: #7cf; }
+  .rebuild-btn:hover:not(:disabled) { color: #7cf; border-color: #7cf; }
+  .rebuild-btn:disabled { opacity: 0.5; cursor: default; }
+  .rebuild-btn.rebuilding { color: #fa0; border-color: #a70; animation: pulse 1s infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: 0.5 } }
 
   .detail {
     border-top: 1px solid #1e1e1e; padding: 0.6rem 0.75rem; flex-shrink: 0;

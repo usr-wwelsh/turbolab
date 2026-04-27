@@ -36,6 +36,7 @@ var (
 	serveThreads  int
 	serveCtxSize  int
 	inferencePort = 8001
+	idPort        = 8002
 )
 
 var serveCmd = &cobra.Command{
@@ -119,9 +120,22 @@ func runServe(cmd *cobra.Command, args []string) error {
 
 	hub := events.NewHub()
 	mgr := process.New(bin, llamaBin, hub, inferencePort, serveBits, serveThreads, serveCtxSize, serveCPU, serveNoQuant)
+	idMgr := process.New(bin, llamaBin, hub, idPort, serveBits, serveThreads, 2048, serveCPU, serveNoQuant)
 
 	if memDB != nil {
-		memDB.SetEmbedFunc(makeEmbedFunc(inferencePort, mgr))
+		memDB.SetEmbedFunc(makeEmbedFunc(idPort, idMgr))
+	}
+
+	if cfg.IDModel != "" {
+		fmt.Printf("Loading ID model: %s\n", cfg.IDModel)
+		if err := idMgr.Start(cfg.IDModel); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: ID model failed to load: %v\n", err)
+		} else {
+			fmt.Println("ID model ready.")
+			if memDB != nil {
+				memDB.RebuildEmbeddings()
+			}
+		}
 	}
 
 	if serveModel != "" {
@@ -148,13 +162,16 @@ func runServe(cmd *cobra.Command, args []string) error {
 		diskUsage, _ := monitor.DiskUsage(home)
 		w.Header().Set("Content-Type", "application/json")
 		respMap := map[string]any{
-			"version": version,
-			"model":   mgr.Model(),
-			"running": mgr.Running(),
-			"loading": mgr.Loading(),
-			"cpu_percent": cpu,
-			"mcp_enabled":    mcpOn.Load(),
-			"memory_inject":  memInjectOn.Load(),
+			"version":          version,
+			"model":            mgr.Model(),
+			"running":          mgr.Running(),
+			"loading":          mgr.Loading(),
+			"cpu_percent":      cpu,
+			"mcp_enabled":      mcpOn.Load(),
+			"memory_inject":    memInjectOn.Load(),
+			"id_model":         idMgr.Model(),
+			"id_model_running": idMgr.Running(),
+			"id_model_loading": idMgr.Loading(),
 			"ram_available_gb": func() float64 {
 				if stats != nil {
 					return stats.AvailableGB()
@@ -205,6 +222,37 @@ func runServe(cmd *cobra.Command, args []string) error {
 		json.NewEncoder(w).Encode(resp)
 	})
 
+	mux.HandleFunc("/api/id-model/load", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "POST only", http.StatusMethodNotAllowed)
+			return
+		}
+		var req struct {
+			Model string `json:"model"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		go func(model string) {
+			if model == "" {
+				idMgr.Stop()
+				return
+			}
+			if err := idMgr.Start(model); err != nil {
+				fmt.Fprintf(os.Stderr, "ID model load failed: %v\n", err)
+				hub.Write([]byte("error: ID model load failed: " + err.Error()))
+				return
+			}
+			if memDB != nil {
+				memDB.RebuildEmbeddings()
+			}
+		}(req.Model)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusAccepted)
+		json.NewEncoder(w).Encode(map[string]string{"status": "loading"})
+	})
+
 	mux.HandleFunc("/api/config", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
@@ -234,6 +282,21 @@ func runServe(cmd *cobra.Command, args []string) error {
 			}
 			mcpOn.Store(incoming.MCPEnabled)
 			memInjectOn.Store(incoming.MemoryInject)
+			if incoming.IDModel != idMgr.Model() {
+				go func(model string) {
+					if model == "" {
+						idMgr.Stop()
+						return
+					}
+					if err := idMgr.Start(model); err != nil {
+						fmt.Fprintf(os.Stderr, "ID model load failed: %v\n", err)
+						return
+					}
+					if memDB != nil {
+						memDB.RebuildEmbeddings()
+					}
+				}(incoming.IDModel)
+			}
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(map[string]string{"status": "saved"})
 
@@ -486,6 +549,16 @@ func runServe(cmd *cobra.Command, args []string) error {
 			json.NewEncoder(w).Encode(results)
 		})
 
+		mux.HandleFunc("/api/memory/stats", func(w http.ResponseWriter, r *http.Request) {
+			total, vectorized, err := memDB.Stats()
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]int{"total": total, "vectorized": vectorized})
+		})
+
 		mux.HandleFunc("/api/memory/embed-rebuild", func(w http.ResponseWriter, r *http.Request) {
 			if r.Method != http.MethodPost {
 				http.Error(w, "POST only", http.StatusMethodNotAllowed)
@@ -563,13 +636,13 @@ func runServe(cmd *cobra.Command, args []string) error {
 						modified = true
 					}
 				}
-				if memInjectOn.Load() && memDB != nil {
+				if memInjectOn.Load() && memDB != nil && idMgr.Running() {
 					var lastUserMsg string
 					if msgs, ok := payload["messages"].([]any); ok {
 						for i := len(msgs) - 1; i >= 0; i-- {
 							if msg, ok := msgs[i].(map[string]any); ok {
 								if role, _ := msg["role"].(string); role == "user" {
-									if content, ok := msg["content"].(string); ok && len(content) >= 3 {
+									if content, ok := msg["content"].(string); ok && len(content) >= 20 {
 										lastUserMsg = content
 										break
 									}
@@ -578,10 +651,16 @@ func runServe(cmd *cobra.Command, args []string) error {
 						}
 					}
 					if lastUserMsg != "" {
-						if mems, err := memDB.Search(lastUserMsg, 3); err == nil && len(mems) > 0 {
+						cfg, _ := config.Load()
+						minScore := cfg.MemoryInjectMinScore
+						if minScore <= 0 {
+							minScore = 0.6
+						}
+						scored, err := memDB.SemanticSearch(lastUserMsg, 2, minScore)
+						if err == nil && len(scored) > 0 {
 							var lines []string
-							for _, m := range mems {
-								c := m.Content
+							for _, s := range scored {
+								c := s.Content
 								if len(c) > 400 {
 									c = c[:400] + "…"
 								}
@@ -655,6 +734,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 		<-sig
 		fmt.Println("\nShutting down...")
 		mgr.Stop()
+		idMgr.Stop()
 		if usageDB != nil {
 			usageDB.Close()
 		}
