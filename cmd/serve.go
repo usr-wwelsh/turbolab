@@ -4,12 +4,14 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"hash/fnv"
 	"io"
 	"net/http"
 	"os"
 	"os/signal"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -117,6 +119,10 @@ func runServe(cmd *cobra.Command, args []string) error {
 
 	memInjectOn := &atomic.Bool{}
 	memInjectOn.Store(cfg.MemoryInject)
+
+	// tracks which memory IDs have been injected per conversation (keyed by fnv of first user message)
+	var convInjectMu sync.Mutex
+	convInjected := map[uint64]map[string]bool{}
 
 	hub := events.NewHub()
 	mgr := process.New(bin, llamaBin, hub, inferencePort, serveBits, serveThreads, serveCtxSize, serveCPU, serveNoQuant)
@@ -607,6 +613,8 @@ func runServe(cmd *cobra.Command, args []string) error {
 		recordFn = usageDB.Record
 	}
 	inferenceProxy := proxy.New(inferencePort, recordFn)
+	backendURL := fmt.Sprintf("http://localhost:%d", inferencePort)
+	backendClient := &http.Client{Timeout: 10 * time.Minute}
 
 	mux.HandleFunc("/v1/chat/completions", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
@@ -637,57 +645,176 @@ func runServe(cmd *cobra.Command, args []string) error {
 					}
 				}
 				if memInjectOn.Load() && memDB != nil && idMgr.Running() {
-					var lastUserMsg string
+					var firstUserMsg, lastUserMsg string
 					if msgs, ok := payload["messages"].([]any); ok {
-						for i := len(msgs) - 1; i >= 0; i-- {
-							if msg, ok := msgs[i].(map[string]any); ok {
-								if role, _ := msg["role"].(string); role == "user" {
-									if content, ok := msg["content"].(string); ok && len(content) >= 20 {
-										lastUserMsg = content
-										break
+						for _, m := range msgs {
+							msg, ok := m.(map[string]any)
+							if !ok {
+								continue
+							}
+							if role, _ := msg["role"].(string); role == "user" {
+								if content, _ := msg["content"].(string); content != "" {
+									if firstUserMsg == "" {
+										firstUserMsg = content
 									}
+									lastUserMsg = content
 								}
 							}
 						}
 					}
-					if lastUserMsg != "" {
+					if lastUserMsg != "" && len(lastUserMsg) >= 20 {
+						h := fnv.New64a()
+						h.Write([]byte(firstUserMsg))
+						convKey := h.Sum64()
+
+						convInjectMu.Lock()
+						seen := convInjected[convKey]
+						if seen == nil {
+							seen = map[string]bool{}
+							convInjected[convKey] = seen
+						}
+						convInjectMu.Unlock()
+
 						cfg, _ := config.Load()
 						minScore := cfg.MemoryInjectMinScore
 						if minScore <= 0 {
 							minScore = 0.6
 						}
 						scored, err := memDB.SemanticSearch(lastUserMsg, 2, minScore)
-						if err == nil && len(scored) > 0 {
+						if err == nil {
 							var lines []string
+							convInjectMu.Lock()
 							for _, s := range scored {
+								if seen[s.ID] {
+									continue
+								}
 								c := s.Content
 								if len(c) > 400 {
 									c = c[:400] + "…"
 								}
 								lines = append(lines, "• "+c)
+								seen[s.ID] = true
 							}
-							memCtx := "Relevant context from memory:\n" + strings.Join(lines, "\n")
-							if msgs, ok := payload["messages"].([]any); ok {
-								if len(msgs) > 0 {
-									if first, ok := msgs[0].(map[string]any); ok {
-										if role, _ := first["role"].(string); role == "system" {
-											if existing, ok := first["content"].(string); ok {
-												first["content"] = memCtx + "\n\n" + existing
+							convInjectMu.Unlock()
+							if len(lines) > 0 {
+								memCtx := "Relevant context from memory:\n" + strings.Join(lines, "\n")
+								if msgs, ok := payload["messages"].([]any); ok {
+									if len(msgs) > 0 {
+										if first, ok := msgs[0].(map[string]any); ok {
+											if role, _ := first["role"].(string); role == "system" {
+												if existing, ok := first["content"].(string); ok {
+													first["content"] = memCtx + "\n\n" + existing
+												} else {
+													first["content"] = memCtx
+												}
 											} else {
-												first["content"] = memCtx
+												payload["messages"] = append([]any{map[string]any{"role": "system", "content": memCtx}}, msgs...)
 											}
-										} else {
-											payload["messages"] = append([]any{map[string]any{"role": "system", "content": memCtx}}, msgs...)
 										}
+									} else {
+										payload["messages"] = []any{map[string]any{"role": "system", "content": memCtx}}
 									}
-								} else {
-									payload["messages"] = []any{map[string]any{"role": "system", "content": memCtx}}
 								}
+								modified = true
 							}
-							modified = true
 						}
 					}
 				}
+
+				// MCP tool injection + tool-call loop.
+				// Only inject when the client hasn't provided its own tools (client handles its own loop).
+				clientHasTools := false
+				if t, ok := payload["tools"]; ok && t != nil {
+					if ts, ok := t.([]any); ok && len(ts) > 0 {
+						clientHasTools = true
+					}
+				}
+				if mcpOn.Load() && memDB != nil && !clientHasTools {
+					payload["tools"] = mcpSrv.ToolDefs()
+					modified = true
+
+					originalStreaming, _ := payload["stream"].(bool)
+					payload["stream"] = false
+
+					var finalRespBody []byte
+					loopDone := false
+					const maxIter = 10
+					for i := 0; i < maxIter && !loopDone; i++ {
+						subBody, err := json.Marshal(payload)
+						if err != nil {
+							break
+						}
+						resp, err := backendClient.Post(backendURL+"/v1/chat/completions", "application/json", bytes.NewReader(subBody))
+						if err != nil {
+							// backend unavailable — restore stream and fall through to proxy
+							payload["stream"] = originalStreaming
+							break
+						}
+						respBody, _ := io.ReadAll(resp.Body)
+						resp.Body.Close()
+
+						var respData map[string]any
+						if json.Unmarshal(respBody, &respData) != nil {
+							finalRespBody = respBody
+							loopDone = true
+							break
+						}
+						choices, _ := respData["choices"].([]any)
+						if len(choices) == 0 {
+							finalRespBody = respBody
+							loopDone = true
+							break
+						}
+						choice, _ := choices[0].(map[string]any)
+						msg, _ := choice["message"].(map[string]any)
+						finishReason, _ := choice["finish_reason"].(string)
+
+						if finishReason != "tool_calls" {
+							finalRespBody = respBody
+							loopDone = true
+							break
+						}
+
+						// Append assistant message then execute each tool call
+						msgs, _ := payload["messages"].([]any)
+						msgs = append(msgs, msg)
+						toolCalls, _ := msg["tool_calls"].([]any)
+						for _, tc := range toolCalls {
+							tcMap, _ := tc.(map[string]any)
+							tcID, _ := tcMap["id"].(string)
+							fn, _ := tcMap["function"].(map[string]any)
+							name, _ := fn["name"].(string)
+							argsStr, _ := fn["arguments"].(string)
+							result, err := mcpSrv.CallTool(name, json.RawMessage(argsStr))
+							content := result
+							if err != nil {
+								content = "error: " + err.Error()
+							}
+							msgs = append(msgs, map[string]any{
+								"role":         "tool",
+								"tool_call_id": tcID,
+								"content":      content,
+							})
+						}
+						payload["messages"] = msgs
+					}
+
+					if loopDone && finalRespBody != nil {
+						if recordFn != nil {
+							proxy.RecordFromJSON(finalRespBody, recordFn)
+						}
+						if originalStreaming {
+							writeAsSSE(w, finalRespBody)
+						} else {
+							w.Header().Set("Content-Type", "application/json")
+							w.Write(finalRespBody)
+						}
+						return
+					}
+					// loop didn't complete (backend error) — fall through to proxy
+					payload["stream"] = originalStreaming
+				}
+
 				if modified {
 					if b, err := json.Marshal(payload); err == nil {
 						body = b
@@ -745,6 +872,71 @@ func runServe(cmd *cobra.Command, args []string) error {
 	}()
 
 	return http.ListenAndServe(fmt.Sprintf(":%d", servePort), mux)
+}
+
+func writeAsSSE(w http.ResponseWriter, jsonBody []byte) {
+	var resp struct {
+		ID      string `json:"id"`
+		Created int64  `json:"created"`
+		Model   string `json:"model"`
+		Choices []struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+			FinishReason string `json:"finish_reason"`
+		} `json:"choices"`
+		Usage *struct {
+			PromptTokens     int `json:"prompt_tokens"`
+			CompletionTokens int `json:"completion_tokens"`
+			TotalTokens      int `json:"total_tokens"`
+		} `json:"usage"`
+	}
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("X-Accel-Buffering", "no")
+	flush := func() {
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
+	}
+	if json.Unmarshal(jsonBody, &resp) != nil || len(resp.Choices) == 0 {
+		fmt.Fprintf(w, "data: [DONE]\n\n")
+		flush()
+		return
+	}
+	contentChunk := map[string]any{
+		"id":      resp.ID,
+		"object":  "chat.completion.chunk",
+		"created": resp.Created,
+		"model":   resp.Model,
+		"choices": []map[string]any{{
+			"index":         0,
+			"delta":         map[string]any{"role": "assistant", "content": resp.Choices[0].Message.Content},
+			"finish_reason": nil,
+		}},
+	}
+	if b, err := json.Marshal(contentChunk); err == nil {
+		fmt.Fprintf(w, "data: %s\n\n", b)
+	}
+	finalChunk := map[string]any{
+		"id":      resp.ID,
+		"object":  "chat.completion.chunk",
+		"created": resp.Created,
+		"model":   resp.Model,
+		"choices": []map[string]any{{
+			"index":         0,
+			"delta":         map[string]any{},
+			"finish_reason": resp.Choices[0].FinishReason,
+		}},
+	}
+	if resp.Usage != nil {
+		finalChunk["usage"] = resp.Usage
+	}
+	if b, err := json.Marshal(finalChunk); err == nil {
+		fmt.Fprintf(w, "data: %s\n\n", b)
+	}
+	fmt.Fprintf(w, "data: [DONE]\n\n")
+	flush()
 }
 
 func makeEmbedFunc(port int, mgr *process.Manager) memory.EmbedFunc {

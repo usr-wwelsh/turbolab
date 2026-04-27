@@ -48,7 +48,7 @@ func New(targetPort int, record RecordFunc) http.Handler {
 				resp.Body.Close()
 				resp.Body = io.NopCloser(bytes.NewReader(body))
 				if err == nil {
-					recordFromJSON(body, record)
+					RecordFromJSON(body, record)
 				}
 			}
 			return nil
@@ -128,7 +128,7 @@ func (s *streamCapture) parse() {
 	}
 }
 
-func recordFromJSON(body []byte, record RecordFunc) {
+func RecordFromJSON(body []byte, record RecordFunc) {
 	var resp struct {
 		Model string `json:"model"`
 		Usage struct {

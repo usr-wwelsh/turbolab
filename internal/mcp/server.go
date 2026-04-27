@@ -201,6 +201,40 @@ func formatMemories(mems []memory.Memory) string {
 	return strings.TrimSpace(sb.String())
 }
 
+// ToolDefs returns tool definitions in OpenAI function-calling format.
+func (s *Server) ToolDefs() []map[string]any {
+	out := make([]map[string]any, 0)
+	for _, t := range toolList() {
+		out = append(out, map[string]any{
+			"type": "function",
+			"function": map[string]any{
+				"name":        t["name"],
+				"description": t["description"],
+				"parameters":  t["inputSchema"],
+			},
+		})
+	}
+	return out
+}
+
+// CallTool executes a named tool and returns its text result.
+func (s *Server) CallTool(name string, args json.RawMessage) (string, error) {
+	raw, _ := json.Marshal(map[string]any{"name": name, "arguments": args})
+	result, err := s.callTool(raw)
+	if err != nil {
+		return "", err
+	}
+	if m, ok := result.(map[string]any); ok {
+		if content, ok := m["content"].([]map[string]any); ok && len(content) > 0 {
+			if t, ok := content[0]["text"].(string); ok {
+				return t, nil
+			}
+		}
+	}
+	b, _ := json.Marshal(result)
+	return string(b), nil
+}
+
 func toolList() []map[string]any {
 	return []map[string]any{
 		{

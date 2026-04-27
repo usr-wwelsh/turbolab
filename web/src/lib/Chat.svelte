@@ -1,5 +1,5 @@
 <script>
-  import { chatStream, searchMemories } from './api.js'
+  import { chatStream, semanticSearchMemories } from './api.js'
 
   export let modelRunning = false
   export let model = ''
@@ -35,11 +35,13 @@
     messages = [...messages, assistantMsg]
     scrollBottom()
 
-    // Fire memory search in parallel with the stream — fast local query
+    // Fire memory search in parallel with the stream — skip already-injected IDs
     if (memInject) {
-      searchMemories(userMsg.content, 3).then(mems => {
-        if (mems?.length > 0) {
-          assistantMsg.injected = mems
+      const shownIds = new Set(messages.flatMap(m => m.injected?.map(i => i.id) ?? []))
+      semanticSearchMemories(userMsg.content, 2, 0.6).then(mems => {
+        const fresh = (mems ?? []).filter(m => !shownIds.has(m.id))
+        if (fresh.length > 0) {
+          assistantMsg.injected = fresh
           messages = messages
         }
       }).catch(() => {})
