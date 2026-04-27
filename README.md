@@ -38,6 +38,20 @@ If the inference process crashes, turbolab restarts it automatically. Three cons
 - Self-update: `turbolab update`
 - Optional systemd service setup via `turbolab setup`
 
+### Memory
+
+turbolab ships a built-in memory store backed by SQLite, accessible from the web UI and via an [MCP](https://modelcontextprotocol.io) server at `/mcp`.
+
+- **Add memories** — plain text, tagged, with an optional source URL or file path. Drop a file (PDF, DOCX, HTML, RST, LaTeX) to auto-convert via pandoc.
+- **Search** — FTS5 full-text search with OR term matching and prefix expansion. Automatically upgrades to vector similarity search when a model is loaded.
+- **Semantic embeddings** — memories are embedded via the loaded model's `/v1/embeddings` endpoint and stored as float32 vectors. Hit "embed ↺" to index existing memories. Cosine similarity search finds conceptually related memories even when keywords don't overlap.
+- **Auto-relate** — on insert, similar memories (cosine ≥ 0.75) are automatically linked with a `similar` edge in the background.
+- **Relationships** — manually link any two memories with a typed edge (`uses`, `depends_on`, `related`, etc.)
+- **Traversal** — `get_related` walks connected memories via BFS to surface related context at configurable depth
+- **Graph view** — interactive force-directed canvas graph of all memories and their edges
+- **Auto-inject** — when enabled, relevant memories are prepended to every chat request as a system message. The chat UI shows a "↑ N memories injected" badge above each response; click to expand and see exactly what was pulled in.
+- **MCP server** — exposes `add_memory`, `search_memory`, `semantic_search_memory`, `get_related`, and `relate_memories` as MCP tools so any MCP-compatible AI client (Claude Code, Cursor, etc.) can read and write the same store
+
 ## Install
 
 Download the latest binary for your platform from [Releases](https://github.com/usr-wwelsh/turbolab/releases/latest):

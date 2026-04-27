@@ -49,6 +49,81 @@ export async function saveConfig(cfg) {
   return r.json()
 }
 
+export async function listMemories(limit = 50, offset = 0) {
+  const r = await fetch(`/api/memory/list?limit=${limit}&offset=${offset}`)
+  return r.json()
+}
+
+export async function searchMemories(q, limit = 20) {
+  const r = await fetch(`/api/memory/search?q=${encodeURIComponent(q)}&limit=${limit}`)
+  return r.json()
+}
+
+export async function addMemory(content, source = '', tags = []) {
+  const r = await fetch('/api/memory/add', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content, source, tags }),
+  })
+  if (!r.ok) throw new Error(await r.text())
+  return r.json()
+}
+
+export async function deleteMemory(id) {
+  const r = await fetch('/api/memory/delete', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id }),
+  })
+  if (!r.ok) throw new Error(await r.text())
+  return r.json()
+}
+
+export async function relateMemories(from_id, to_id, rel_type = 'related') {
+  const r = await fetch('/api/memory/relate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ from_id, to_id, rel_type }),
+  })
+  if (!r.ok) throw new Error(await r.text())
+  return r.json()
+}
+
+export async function unrelateMemories(from_id, to_id, rel_type) {
+  const r = await fetch('/api/memory/unrelate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ from_id, to_id, rel_type }),
+  })
+  if (!r.ok) throw new Error(await r.text())
+  return r.json()
+}
+
+export async function getMemoryGraph() {
+  const r = await fetch('/api/memory/graph')
+  return r.json()
+}
+
+export async function semanticSearchMemories(q, limit = 10, minScore = 0.3) {
+  const r = await fetch(`/api/memory/semantic-search?q=${encodeURIComponent(q)}&limit=${limit}&min_score=${minScore}`)
+  if (!r.ok) throw new Error(await r.text())
+  return r.json()
+}
+
+export async function rebuildEmbeddings() {
+  const r = await fetch('/api/memory/embed-rebuild', { method: 'POST' })
+  if (!r.ok) throw new Error(await r.text())
+  return r.json()
+}
+
+export async function convertFile(file) {
+  const form = new FormData()
+  form.append('file', file)
+  const r = await fetch('/api/memory/convert', { method: 'POST', body: form })
+  if (!r.ok) throw new Error(await r.text())
+  return r.json()
+}
+
 export async function getUsage(days = 30) {
   const r = await fetch(`/api/usage?days=${days}`)
   return r.json()

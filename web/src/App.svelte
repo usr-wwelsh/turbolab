@@ -6,6 +6,7 @@
   import Settings from './lib/Settings.svelte'
   import LogPanel from './lib/LogPanel.svelte'
   import Usage from './lib/Usage.svelte'
+  import Memory from './lib/Memory.svelte'
   import { getStatus } from './lib/api.js'
 
   let tab = 'chat'
@@ -80,6 +81,7 @@
   <div class="tabs">
     <button class:active={tab === 'chat'} on:click={() => tab = 'chat'}>Chat</button>
     <button class:active={tab === 'models'} on:click={() => tab = 'models'}>Models</button>
+    <button class:active={tab === 'memory'} on:click={() => tab = 'memory'}>Memory</button>
     <button class:active={tab === 'usage'} on:click={() => tab = 'usage'}>Usage</button>
     <button class:active={tab === 'settings'} on:click={() => tab = 'settings'}>Settings</button>
   </div>
@@ -104,11 +106,13 @@
     {#if tab === 'chat'}
       {#each sessions as s (s.id)}
         <div style="height:100%;display:{s.id===activeId?'flex':'none'};flex-direction:column;">
-          <Chat modelRunning={status?.running ?? false} model={status?.model ?? ''} bind:messages={s.messages} sessionId={s.id} onStreaming={(v) => inferring = v} />
+          <Chat modelRunning={status?.running ?? false} model={status?.model ?? ''} memInject={status?.memory_inject ?? false} bind:messages={s.messages} sessionId={s.id} onStreaming={(v) => inferring = v} />
         </div>
       {/each}
     {:else if tab === 'models'}
       <ModelSearch onLoad={onModelLoaded} />
+    {:else if tab === 'memory'}
+      <Memory {status} />
     {:else if tab === 'usage'}
       <Usage />
     {:else}

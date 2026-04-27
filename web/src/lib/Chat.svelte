@@ -1,8 +1,9 @@
 <script>
-  import { chatStream } from './api.js'
+  import { chatStream, searchMemories } from './api.js'
 
   export let modelRunning = false
   export let model = ''
+  export let memInject = false
   export let messages = []
   export const sessionId = 0
   export let onStreaming = (_) => {}
@@ -30,9 +31,19 @@
     onStreaming(true)
     abortCtrl = new AbortController()
 
-    const assistantMsg = { role: 'assistant', content: '' }
+    const assistantMsg = { role: 'assistant', content: '', injected: null, injectedOpen: false }
     messages = [...messages, assistantMsg]
     scrollBottom()
+
+    // Fire memory search in parallel with the stream — fast local query
+    if (memInject) {
+      searchMemories(userMsg.content, 3).then(mems => {
+        if (mems?.length > 0) {
+          assistantMsg.injected = mems
+          messages = messages
+        }
+      }).catch(() => {})
+    }
 
     try {
       await chatStream(messages.slice(0, -1), token => {
@@ -112,6 +123,23 @@
       <div class="msg {msg.role}">
         <span class="role">{msg.role === 'user' ? 'you' : 'ai'}</span>
         <div class="content-wrap">
+          {#if msg.injected?.length > 0}
+            <div class="inject-badge">
+              <button class="inject-toggle" on:click={() => { msg.injectedOpen = !msg.injectedOpen; messages = messages }}>
+                ↑ {msg.injected.length} memor{msg.injected.length === 1 ? 'y' : 'ies'} injected {msg.injectedOpen ? '▾' : '▸'}
+              </button>
+              {#if msg.injectedOpen}
+                <div class="inject-list">
+                  {#each msg.injected as m}
+                    <div class="inject-item">
+                      <span class="inject-id">{m.id.slice(0,8)}</span>
+                      <span class="inject-content">{m.content.length > 200 ? m.content.slice(0, 200) + '…' : m.content}</span>
+                    </div>
+                  {/each}
+                </div>
+              {/if}
+            </div>
+          {/if}
           <pre class="content" class:error={msg.error}>{msg.content}{#if msg.role === 'assistant' && streaming && msg === messages[messages.length - 1]}<span class="cursor">▋</span>{/if}</pre>
           {#if msg.detail}
             <details class="error-detail">
@@ -189,4 +217,19 @@
   }
   button:disabled { opacity: 0.4; cursor: default; }
   .stop-btn { background: #333; color: #f66; border: 1px solid #f66; }
+
+  .inject-badge { margin-bottom: 0.35rem; }
+  .inject-toggle {
+    background: none; border: none; padding: 0; cursor: pointer;
+    color: #5a8a6a; font-family: monospace; font-size: 0.75rem;
+    font-weight: normal; align-self: unset;
+  }
+  .inject-toggle:hover { color: #7cf; }
+  .inject-list {
+    margin-top: 0.3rem; border-left: 2px solid #1a3a2a;
+    padding-left: 0.6rem; display: flex; flex-direction: column; gap: 0.4rem;
+  }
+  .inject-item { display: flex; gap: 0.5rem; align-items: baseline; }
+  .inject-id { color: #2a4a3a; font-size: 0.7rem; flex-shrink: 0; }
+  .inject-content { color: #6a8a7a; font-size: 0.8rem; white-space: pre-wrap; word-break: break-word; }
 </style>

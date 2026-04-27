@@ -10,12 +10,16 @@ import (
 	"os/signal"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"syscall"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/usr-wwelsh/turbolab/internal/config"
 	"github.com/usr-wwelsh/turbolab/internal/events"
 	"github.com/usr-wwelsh/turbolab/internal/hf"
+	"github.com/usr-wwelsh/turbolab/internal/mcp"
+	"github.com/usr-wwelsh/turbolab/internal/memory"
 	"github.com/usr-wwelsh/turbolab/internal/monitor"
 	"github.com/usr-wwelsh/turbolab/internal/process"
 	"github.com/usr-wwelsh/turbolab/internal/proxy"
@@ -101,8 +105,24 @@ func runServe(cmd *cobra.Command, args []string) error {
 		fmt.Fprintf(os.Stderr, "warning: could not open usage db: %v\n", err)
 	}
 
+	memDB, err := memory.Open()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "warning: could not open memory db: %v\n", err)
+	}
+
+	mcpOn := &atomic.Bool{}
+	mcpOn.Store(cfg.MCPEnabled)
+	mcpSrv := mcp.New(memDB, mcpOn)
+
+	memInjectOn := &atomic.Bool{}
+	memInjectOn.Store(cfg.MemoryInject)
+
 	hub := events.NewHub()
 	mgr := process.New(bin, llamaBin, hub, inferencePort, serveBits, serveThreads, serveCtxSize, serveCPU, serveNoQuant)
+
+	if memDB != nil {
+		memDB.SetEmbedFunc(makeEmbedFunc(inferencePort, mgr))
+	}
 
 	if serveModel != "" {
 		if process.IsGGUF(serveModel) {
@@ -133,6 +153,8 @@ func runServe(cmd *cobra.Command, args []string) error {
 			"running": mgr.Running(),
 			"loading": mgr.Loading(),
 			"cpu_percent": cpu,
+			"mcp_enabled":    mcpOn.Load(),
+			"memory_inject":  memInjectOn.Load(),
 			"ram_available_gb": func() float64 {
 				if stats != nil {
 					return stats.AvailableGB()
@@ -210,6 +232,8 @@ func runServe(cmd *cobra.Command, args []string) error {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
 			}
+			mcpOn.Store(incoming.MCPEnabled)
+			memInjectOn.Store(incoming.MemoryInject)
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(map[string]string{"status": "saved"})
 
@@ -311,6 +335,200 @@ func runServe(cmd *cobra.Command, args []string) error {
 		json.NewEncoder(w).Encode(map[string]string{"status": "deleted"})
 	})
 
+	mux.HandleFunc("/mcp", mcpSrv.Handler())
+
+	if memDB != nil {
+		mux.HandleFunc("/api/memory/list", func(w http.ResponseWriter, r *http.Request) {
+			limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+			offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
+			if limit <= 0 {
+				limit = 50
+			}
+			mems, err := memDB.List(limit, offset)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(mems)
+		})
+
+		mux.HandleFunc("/api/memory/search", func(w http.ResponseWriter, r *http.Request) {
+			q := r.URL.Query().Get("q")
+			limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+			if limit <= 0 {
+				limit = 20
+			}
+			mems, err := memDB.Search(q, limit)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(mems)
+		})
+
+		mux.HandleFunc("/api/memory/add", func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodPost {
+				http.Error(w, "POST only", http.StatusMethodNotAllowed)
+				return
+			}
+			var req struct {
+				Content string   `json:"content"`
+				Source  string   `json:"source"`
+				Tags    []string `json:"tags"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			if strings.TrimSpace(req.Content) == "" {
+				http.Error(w, "content required", http.StatusBadRequest)
+				return
+			}
+			m, err := memDB.Add(req.Content, req.Source, req.Tags)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusCreated)
+			json.NewEncoder(w).Encode(m)
+		})
+
+		mux.HandleFunc("/api/memory/delete", func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodPost {
+				http.Error(w, "POST only", http.StatusMethodNotAllowed)
+				return
+			}
+			var req struct {
+				ID string `json:"id"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			if err := memDB.Delete(req.ID); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]string{"status": "deleted"})
+		})
+
+		mux.HandleFunc("/api/memory/relate", func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodPost {
+				http.Error(w, "POST only", http.StatusMethodNotAllowed)
+				return
+			}
+			var req struct {
+				FromID  string `json:"from_id"`
+				ToID    string `json:"to_id"`
+				RelType string `json:"rel_type"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			if err := memDB.Relate(req.FromID, req.ToID, req.RelType); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]string{"status": "related"})
+		})
+
+		mux.HandleFunc("/api/memory/unrelate", func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodPost {
+				http.Error(w, "POST only", http.StatusMethodNotAllowed)
+				return
+			}
+			var req struct {
+				FromID  string `json:"from_id"`
+				ToID    string `json:"to_id"`
+				RelType string `json:"rel_type"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			if err := memDB.Unrelate(req.FromID, req.ToID, req.RelType); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]string{"status": "unrelated"})
+		})
+
+		mux.HandleFunc("/api/memory/graph", func(w http.ResponseWriter, r *http.Request) {
+			data, err := memDB.GraphData()
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(data)
+		})
+
+		mux.HandleFunc("/api/memory/semantic-search", func(w http.ResponseWriter, r *http.Request) {
+			q := r.URL.Query().Get("q")
+			limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+			if limit <= 0 {
+				limit = 10
+			}
+			minScore := float32(0.3)
+			results, err := memDB.SemanticSearch(q, limit, minScore)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusServiceUnavailable)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(results)
+		})
+
+		mux.HandleFunc("/api/memory/embed-rebuild", func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodPost {
+				http.Error(w, "POST only", http.StatusMethodNotAllowed)
+				return
+			}
+			memDB.RebuildEmbeddings()
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]string{"status": "rebuilding"})
+		})
+
+		mux.HandleFunc("/api/memory/convert", func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodPost {
+				http.Error(w, "POST only", http.StatusMethodNotAllowed)
+				return
+			}
+			if err := r.ParseMultipartForm(32 << 20); err != nil {
+				http.Error(w, "failed to parse form", http.StatusBadRequest)
+				return
+			}
+			file, header, err := r.FormFile("file")
+			if err != nil {
+				http.Error(w, "file field required", http.StatusBadRequest)
+				return
+			}
+			defer file.Close()
+			data, err := io.ReadAll(file)
+			if err != nil {
+				http.Error(w, "failed to read file", http.StatusInternalServerError)
+				return
+			}
+			md, err := memory.ConvertToMarkdown(header.Filename, data)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusUnprocessableEntity)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]string{
+				"markdown": md,
+				"filename": header.Filename,
+			})
+		})
+	}
+
 	var recordFn proxy.RecordFunc
 	if usageDB != nil {
 		recordFn = usageDB.Record
@@ -343,6 +561,52 @@ func runServe(cmd *cobra.Command, args []string) error {
 					if _, set := payload["stream_options"]; !set {
 						payload["stream_options"] = map[string]any{"include_usage": true}
 						modified = true
+					}
+				}
+				if memInjectOn.Load() && memDB != nil {
+					var lastUserMsg string
+					if msgs, ok := payload["messages"].([]any); ok {
+						for i := len(msgs) - 1; i >= 0; i-- {
+							if msg, ok := msgs[i].(map[string]any); ok {
+								if role, _ := msg["role"].(string); role == "user" {
+									if content, ok := msg["content"].(string); ok && len(content) >= 3 {
+										lastUserMsg = content
+										break
+									}
+								}
+							}
+						}
+					}
+					if lastUserMsg != "" {
+						if mems, err := memDB.Search(lastUserMsg, 3); err == nil && len(mems) > 0 {
+							var lines []string
+							for _, m := range mems {
+								c := m.Content
+								if len(c) > 400 {
+									c = c[:400] + "…"
+								}
+								lines = append(lines, "• "+c)
+							}
+							memCtx := "Relevant context from memory:\n" + strings.Join(lines, "\n")
+							if msgs, ok := payload["messages"].([]any); ok {
+								if len(msgs) > 0 {
+									if first, ok := msgs[0].(map[string]any); ok {
+										if role, _ := first["role"].(string); role == "system" {
+											if existing, ok := first["content"].(string); ok {
+												first["content"] = memCtx + "\n\n" + existing
+											} else {
+												first["content"] = memCtx
+											}
+										} else {
+											payload["messages"] = append([]any{map[string]any{"role": "system", "content": memCtx}}, msgs...)
+										}
+									}
+								} else {
+									payload["messages"] = []any{map[string]any{"role": "system", "content": memCtx}}
+								}
+							}
+							modified = true
+						}
 					}
 				}
 				if modified {
@@ -394,8 +658,45 @@ func runServe(cmd *cobra.Command, args []string) error {
 		if usageDB != nil {
 			usageDB.Close()
 		}
+		if memDB != nil {
+			memDB.Close()
+		}
 		os.Exit(0)
 	}()
 
 	return http.ListenAndServe(fmt.Sprintf(":%d", servePort), mux)
+}
+
+func makeEmbedFunc(port int, mgr *process.Manager) memory.EmbedFunc {
+	client := &http.Client{Timeout: 30 * time.Second}
+	return func(text string) ([]float32, error) {
+		if !mgr.Running() {
+			return nil, fmt.Errorf("no model loaded")
+		}
+		body, _ := json.Marshal(map[string]any{"input": text, "model": "default"})
+		resp, err := client.Post(
+			fmt.Sprintf("http://localhost:%d/v1/embeddings", port),
+			"application/json",
+			bytes.NewReader(body),
+		)
+		if err != nil {
+			return nil, err
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			return nil, fmt.Errorf("embedding endpoint returned %d", resp.StatusCode)
+		}
+		var result struct {
+			Data []struct {
+				Embedding []float32 `json:"embedding"`
+			} `json:"data"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+			return nil, err
+		}
+		if len(result.Data) == 0 || len(result.Data[0].Embedding) == 0 {
+			return nil, fmt.Errorf("empty embedding response")
+		}
+		return result.Data[0].Embedding, nil
+	}
 }

@@ -9,13 +9,15 @@ import (
 const DefaultModel = "bigatuna/Qwen3-0.6B-Sushi-Coder"
 
 type Config struct {
-	Model     string `json:"model"`
-	CPUOnly   bool   `json:"cpu_only"`
-	Bits      int    `json:"bits"`
-	Port      int    `json:"port"`
-	MaxTokens int    `json:"max_tokens"`
-	Threads   int    `json:"threads"`
-	CtxSize   int    `json:"ctx_size"`
+	Model      string `json:"model"`
+	CPUOnly    bool   `json:"cpu_only"`
+	Bits       int    `json:"bits"`
+	Port       int    `json:"port"`
+	MaxTokens  int    `json:"max_tokens"`
+	Threads    int    `json:"threads"`
+	CtxSize    int    `json:"ctx_size"`
+	MCPEnabled    bool `json:"mcp_enabled"`
+	MemoryInject  bool `json:"memory_inject"`
 }
 
 func defaults() Config {

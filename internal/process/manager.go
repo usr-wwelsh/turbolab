@@ -159,6 +159,7 @@ func (m *Manager) Start(modelID string) error {
 			"--ubatch-size", "512",
 			"--cache-reuse", "256",
 			"--flash-attn", "auto",
+			"--embeddings",
 		}
 		if m.cpuOnly {
 			args = append(args, "--n-gpu-layers", "0")
