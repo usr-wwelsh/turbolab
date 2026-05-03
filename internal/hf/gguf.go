@@ -123,6 +123,25 @@ func GGUFCacheDir() (string, error) {
 	return dir, nil
 }
 
+// FindCachedGGUF returns the path of any .gguf file cached for modelID, or "".
+func FindCachedGGUF(modelID string) string {
+	dir, err := GGUFCacheDir()
+	if err != nil {
+		return ""
+	}
+	safe := strings.ReplaceAll(modelID, "/", "--")
+	entries, err := os.ReadDir(filepath.Join(dir, safe))
+	if err != nil {
+		return ""
+	}
+	for _, e := range entries {
+		if !e.IsDir() && strings.HasSuffix(strings.ToLower(e.Name()), ".gguf") {
+			return filepath.Join(dir, safe, e.Name())
+		}
+	}
+	return ""
+}
+
 // LocalGGUFPath returns the local path for a downloaded GGUF file, or "" if not cached.
 func LocalGGUFPath(modelID, filename string) string {
 	dir, err := GGUFCacheDir()

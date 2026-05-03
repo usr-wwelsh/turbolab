@@ -77,7 +77,7 @@
   function compatible(m) {
     // local models have pre-computed compat from config.json
     if (m.compatible != null) {
-      if (!m.compatible && m.compat_reason === 'gguf') return { ok: 'gguf', label: 'llama-server' }
+      if (m.compat_reason === 'gguf') return { ok: m.compatible ? 'gguf' : 'no', label: 'llama-server' }
       return { ok: m.compatible ? 'yes' : 'no', label: m.compat_reason }
     }
     // GGUF repos (model ID ends with -GGUF) are loadable via llama-server

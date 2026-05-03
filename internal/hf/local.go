@@ -105,7 +105,7 @@ func LocalModels() ([]Model, error) {
 			}
 			// dir names are stored as "namespace--reponame"
 			id := strings.Replace(e.Name(), "--", "/", 1)
-			ok := false
+			ok := true
 			ggufPath := filepath.Join(ggufDir, e.Name())
 			size := dirSize(ggufPath)
 			models = append(models, Model{

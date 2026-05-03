@@ -113,6 +113,13 @@ func (m *Manager) Start(modelID string) error {
 	// returns what the caller requested, not the resolved local path.
 	m.requestedModel = modelID
 
+	// Resolve locally cached GGUFs (placed in ~/.turbolab/gguf/) to their file path.
+	if !IsGGUF(modelID) && !hf.IsGGUFRepo(modelID) {
+		if p := hf.FindCachedGGUF(modelID); p != "" {
+			modelID = p
+		}
+	}
+
 	// Resolve HuggingFace GGUF repos to a local file before starting.
 	// Release the mutex during the download so status checks don't block.
 	if hf.IsGGUFRepo(modelID) {
