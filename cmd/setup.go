@@ -116,9 +116,11 @@ func installLlamaServer() error {
 	}
 	defer gz.Close()
 
-	// Install everything into one directory so llama.cpp's backend loader
-	// (which searches the executable's directory) finds the cpu plugin .so files.
-	installDir := "/usr/local/lib/llama-cpp"
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("homedir: %w", err)
+	}
+	installDir := filepath.Join(home, ".local", "lib", "llama-cpp")
 	if err := os.MkdirAll(installDir, 0755); err != nil {
 		return fmt.Errorf("mkdir %s: %w", installDir, err)
 	}
@@ -169,24 +171,17 @@ func installLlamaServer() error {
 		return fmt.Errorf("llama-server binary not found in tar.gz")
 	}
 
-	// Symlink binary into PATH
-	binLink := "/usr/local/bin/llama-server"
+	// Symlink binary into ~/.local/bin (already in PATH for most users)
+	binDir := filepath.Join(home, ".local", "bin")
+	if err := os.MkdirAll(binDir, 0755); err != nil {
+		return fmt.Errorf("mkdir %s: %w", binDir, err)
+	}
+	binLink := filepath.Join(binDir, "llama-server")
 	os.Remove(binLink)
 	if err := os.Symlink(filepath.Join(installDir, "llama-server"), binLink); err != nil {
 		return fmt.Errorf("symlink binary: %w", err)
 	}
 	fmt.Printf("Symlinked llama-server → %s\n", binLink)
-
-	// Add installDir to ldconfig so the linker finds libggml/libllama/libmtmd
-	confFile := "/etc/ld.so.conf.d/llama-cpp.conf"
-	if err := os.WriteFile(confFile, []byte(installDir+"\n"), 0644); err != nil {
-		fmt.Fprintf(os.Stderr, "warning: could not write %s: %v\n", confFile, err)
-	}
-	if ldconfigPath, err := exec.LookPath("ldconfig"); err == nil {
-		if err := run(ldconfigPath); err != nil {
-			fmt.Fprintf(os.Stderr, "warning: ldconfig failed: %v\n", err)
-		}
-	}
 	return nil
 }
 
@@ -269,10 +264,17 @@ func venvPath() (string, error) {
 }
 
 func llamaServerBin() string {
-	if path, err := exec.LookPath("llama-server"); err == nil {
-		return path
+	path, err := exec.LookPath("llama-server")
+	if err != nil {
+		return ""
 	}
-	return ""
+	// Verify shared libs load — exit 127 means missing .so files
+	if err := exec.Command(path, "--version").Run(); err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 127 {
+			return ""
+		}
+	}
+	return path
 }
 
 func turboquantBin() (string, error) {

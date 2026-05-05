@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
@@ -192,6 +193,17 @@ func (m *Manager) Start(modelID string) error {
 		fmt.Sprintf("OPENBLAS_NUM_THREADS=%d", m.threads),
 		fmt.Sprintf("NUMEXPR_NUM_THREADS=%d", m.threads),
 		"TOKENIZERS_PARALLELISM=false",
+	}
+	if IsGGUF(modelID) {
+		// Ensure shared libs installed alongside llama-server are found
+		if home, err := os.UserHomeDir(); err == nil {
+			libDir := filepath.Join(home, ".local", "lib", "llama-cpp")
+			existing := os.Getenv("LD_LIBRARY_PATH")
+			if existing != "" {
+				libDir = libDir + ":" + existing
+			}
+			threadEnv = append(threadEnv, "LD_LIBRARY_PATH="+libDir)
+		}
 	}
 	if m.cpuOnly && !IsGGUF(modelID) {
 		cmd.Env = append(os.Environ(), append(threadEnv, "CUDA_VISIBLE_DEVICES=")...)
