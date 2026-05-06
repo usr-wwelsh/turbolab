@@ -198,23 +198,37 @@ func promptSystemd() error {
 		return nil
 	}
 
-	self, err := os.Executable()
-	if err != nil {
-		return err
+	const installPath = "/usr/local/bin/turbolab"
+	if _, err := os.Stat(installPath); os.IsNotExist(err) {
+		self, err := os.Executable()
+		if err != nil {
+			return fmt.Errorf("could not determine binary path: %w", err)
+		}
+		fmt.Printf("Copying binary to %s...\n", installPath)
+		if err := copyFile(self, installPath, 0755); err != nil {
+			return fmt.Errorf("couldn't install to %s (try sudo): %w", installPath, err)
+		}
+	} else {
+		fmt.Printf("Binary already present at %s\n", installPath)
 	}
 
-	unit := fmt.Sprintf(`[Unit]
+	unit := `[Unit]
 Description=turbolab AI model server
 After=network.target
 
 [Service]
-ExecStart=%s serve
+ExecStart=/usr/local/bin/turbolab serve
 Restart=on-failure
 RestartSec=5
+StartLimitIntervalSec=60
+StartLimitBurst=3
+KillMode=mixed
+KillSignal=SIGTERM
+TimeoutStopSec=30
 
 [Install]
 WantedBy=multi-user.target
-`, self)
+`
 
 	unitPath := "/etc/systemd/system/turbolab.service"
 	if err := os.WriteFile(unitPath, []byte(unit), 0644); err != nil {
@@ -230,6 +244,24 @@ WantedBy=multi-user.target
 
 	fmt.Println("Service installed. Start with: sudo systemctl start turbolab")
 	return nil
+}
+
+func copyFile(src, dst string, mode os.FileMode) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	out, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, mode)
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(out, in); err != nil {
+		out.Close()
+		os.Remove(dst)
+		return err
+	}
+	return out.Close()
 }
 
 func run(name string, args ...string) error {

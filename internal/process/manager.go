@@ -371,6 +371,12 @@ func (m *Manager) waitReady() error {
 func resolveGGUFRepo(modelID string, logOut io.Writer) (string, error) {
 	fmt.Fprintf(logOut, "Resolving GGUF repo: %s\n", modelID)
 
+	// Check local cache before hitting the HF API.
+	if cached := hf.FindCachedGGUF(modelID); cached != "" {
+		fmt.Fprintf(logOut, "Using cached GGUF: %s\n", cached)
+		return cached, nil
+	}
+
 	info, err := hf.Info(modelID)
 	if err != nil {
 		return "", err
@@ -387,12 +393,6 @@ func resolveGGUFRepo(modelID string, logOut io.Writer) (string, error) {
 		return "", err
 	}
 	fmt.Fprintf(logOut, "Selected quant: %s (%.1f GB RAM available)\n", filename, availGB)
-
-	// Use cached file if present
-	if cached := hf.LocalGGUFPath(modelID, filename); cached != "" {
-		fmt.Fprintf(logOut, "Using cached GGUF: %s\n", cached)
-		return cached, nil
-	}
 
 	return hf.DownloadGGUF(modelID, filename, logOut)
 }
