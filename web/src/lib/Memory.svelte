@@ -6,7 +6,6 @@
     convertFile, getConfig, saveConfig, memoryStats
   } from './api.js'
 
-  export let status = null
 
   let tab = 'memories'
   let memories = []
@@ -449,7 +448,10 @@
         <div
           class="mem-item"
           class:active={selected?.id === m.id}
+          role="button"
+          tabindex="0"
           on:click={() => selectMemory(m)}
+          on:keydown={(e) => e.key === 'Enter' && selectMemory(m)}
         >
           <div class="mem-preview">{m.content.slice(0, 80)}{m.content.length > 80 ? '…' : ''}</div>
           <div class="mem-meta">
@@ -520,10 +522,13 @@
       <div
         class="drop-zone"
         class:dragging={draggingOver}
+        role="button"
+        tabindex="0"
         on:dragover={onDragOver}
         on:dragleave={onDragLeave}
         on:drop={onDrop}
         on:click={() => document.getElementById('file-input').click()}
+        on:keydown={(e) => e.key === 'Enter' && document.getElementById('file-input').click()}
       >
         {#if converting}
           converting…

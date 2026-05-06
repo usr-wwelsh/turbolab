@@ -112,7 +112,7 @@
     {:else if tab === 'models'}
       <ModelSearch onLoad={onModelLoaded} />
     {:else if tab === 'memory'}
-      <Memory {status} />
+      <Memory />
     {:else if tab === 'usage'}
       <Usage />
     {:else}

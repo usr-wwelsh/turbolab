@@ -28,13 +28,13 @@
   <p class="hint">Changes take effect on next server restart.</p>
 
   <div class="field">
-    <label>Default model</label>
-    <input bind:value={cfg.model} placeholder="org/model-id" />
+    <label for="model">Default model</label>
+    <input id="model" bind:value={cfg.model} placeholder="org/model-id" />
   </div>
 
   <div class="field">
-    <label>KV cache bits</label>
-    <select bind:value={cfg.bits}>
+    <label for="bits">KV cache bits</label>
+    <select id="bits" bind:value={cfg.bits}>
       <option value={2}>2-bit</option>
       <option value={4}>4-bit</option>
       <option value={8}>8-bit</option>
@@ -42,23 +42,23 @@
   </div>
 
   <div class="field">
-    <label>Port</label>
-    <input type="number" bind:value={cfg.port} min="1024" max="65535" />
+    <label for="port">Port</label>
+    <input id="port" type="number" bind:value={cfg.port} min="1024" max="65535" />
   </div>
 
   <div class="field">
-    <label>Max tokens (response length)</label>
-    <input type="number" bind:value={cfg.max_tokens} min="128" max="131072" step="128" />
+    <label for="max_tokens">Max tokens (response length)</label>
+    <input id="max_tokens" type="number" bind:value={cfg.max_tokens} min="128" max="131072" step="128" />
   </div>
 
   <div class="field">
-    <label>Context size (tokens)</label>
-    <input type="number" bind:value={cfg.ctx_size} min="512" max="131072" step="512" />
+    <label for="ctx_size">Context size (tokens)</label>
+    <input id="ctx_size" type="number" bind:value={cfg.ctx_size} min="512" max="131072" step="512" />
   </div>
 
   <div class="field row">
-    <label>CPU only</label>
-    <input type="checkbox" bind:checked={cfg.cpu_only} />
+    <label for="cpu_only">CPU only</label>
+    <input id="cpu_only" type="checkbox" bind:checked={cfg.cpu_only} />
   </div>
 
   <button on:click={save}>Save</button>
