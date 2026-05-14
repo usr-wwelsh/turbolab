@@ -61,6 +61,8 @@ func runSetup(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	ensurePandoc()
+
 	if err := promptSystemd(); err != nil {
 		fmt.Fprintf(os.Stderr, "warning: systemd setup failed: %v\n", err)
 	}
@@ -183,6 +185,67 @@ func installLlamaServer() error {
 	}
 	fmt.Printf("Symlinked llama-server → %s\n", binLink)
 	return nil
+}
+
+// ensurePandoc detects pandoc, and if missing offers to install via the
+// host package manager. Used for PDF/DOCX/HTML attachments in chat and
+// memory imports. Non-fatal: plain-text and image attachments work either way.
+func ensurePandoc() {
+	if _, err := exec.LookPath("pandoc"); err == nil {
+		fmt.Println("pandoc found — PDF/DOCX/HTML attachments supported.")
+		return
+	}
+	fmt.Println("pandoc not found (needed for PDF/DOCX/HTML attachments).")
+	cmd, name := detectPandocInstall()
+	if cmd == "" {
+		fmt.Println("Install manually: https://pandoc.org/installing.html")
+		return
+	}
+	fmt.Printf("Install pandoc with %s? [Y/n] ", name)
+	scanner := bufio.NewScanner(os.Stdin)
+	scanner.Scan()
+	ans := strings.ToLower(strings.TrimSpace(scanner.Text()))
+	if ans != "" && ans != "y" && ans != "yes" {
+		fmt.Printf("Skipped. Install later with: %s\n", cmd)
+		return
+	}
+	parts := strings.Fields(cmd)
+	if err := run(parts[0], parts[1:]...); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: pandoc install failed: %v\n", err)
+		fmt.Printf("Try manually: %s\n", cmd)
+	}
+}
+
+// detectPandocInstall returns a shell-style install command for the detected
+// package manager, or "" if no known manager is on PATH. Prefixes sudo when
+// not running as root and sudo is available.
+func detectPandocInstall() (cmd, name string) {
+	sudo := ""
+	if os.Geteuid() != 0 {
+		if _, err := exec.LookPath("sudo"); err == nil {
+			sudo = "sudo "
+		}
+	}
+	switch {
+	case hasBin("apt-get"):
+		return sudo + "apt-get install -y pandoc", "apt-get"
+	case hasBin("dnf"):
+		return sudo + "dnf install -y pandoc", "dnf"
+	case hasBin("pacman"):
+		return sudo + "pacman -S --noconfirm pandoc", "pacman"
+	case hasBin("zypper"):
+		return sudo + "zypper install -y pandoc", "zypper"
+	case hasBin("apk"):
+		return sudo + "apk add pandoc", "apk"
+	case hasBin("brew"):
+		return "brew install pandoc", "brew"
+	}
+	return "", ""
+}
+
+func hasBin(name string) bool {
+	_, err := exec.LookPath(name)
+	return err == nil
 }
 
 func promptSystemd() error {
