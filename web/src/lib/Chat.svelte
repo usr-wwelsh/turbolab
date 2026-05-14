@@ -46,6 +46,13 @@
       const blobs = textBlobs.map(a => `# ${a.name}\n\n${a.text}`).join('\n\n---\n\n')
       fullText = fullText ? `${fullText}\n\n---\n\n${blobs}` : blobs
     }
+    const sprites = atts.filter(a => a.kind === 'image' && a.isSpritesheet)
+    if (sprites.length > 0) {
+      const hints = sprites.map(s =>
+        `[The image titled "${s.name}" is an animated GIF decomposed into a ${s.frames}-frame grid, ordered top-left to bottom-right and labelled "1/${s.frames}" through "${s.frames}/${s.frames}". Treat it as a single animation, not separate images, and describe the motion or sequence rather than each tile.]`
+      ).join('\n')
+      fullText = fullText ? `${hints}\n\n${fullText}` : hints
+    }
     if (!hasImages) return fullText
     const parts = []
     if (fullText) parts.push({ type: 'text', text: fullText })
@@ -162,11 +169,79 @@
     })
   }
 
+  // gifToSpritesheet samples up to maxFrames evenly from an animated GIF and
+  // composites them into a labelled grid PNG. Returns null when ImageDecoder
+  // isn't available or the file is a single-frame GIF, so callers fall back
+  // to the still-image path.
+  async function gifToSpritesheet(file, maxFrames = 9, maxDim = 1024) {
+    if (typeof ImageDecoder === 'undefined') return null
+    const buf = await file.arrayBuffer()
+    const decoder = new ImageDecoder({ data: buf, type: file.type || 'image/gif' })
+    try {
+      await decoder.tracks.ready
+      const track = decoder.tracks.selectedTrack
+      const total = track?.frameCount ?? 0
+      if (total <= 1) return null
+
+      const stride = Math.max(1, Math.floor(total / maxFrames))
+      const indices = []
+      for (let i = 0; i < total && indices.length < maxFrames; i += stride) indices.push(i)
+      const n = indices.length
+
+      const cols = Math.ceil(Math.sqrt(n))
+      const rows = Math.ceil(n / cols)
+
+      const first = await decoder.decode({ frameIndex: indices[0] })
+      const fw = first.image.displayWidth
+      const fh = first.image.displayHeight
+      const tileW = Math.floor(Math.min(fw, maxDim / cols))
+      const tileH = Math.floor(tileW * fh / fw)
+
+      const canvas = document.createElement('canvas')
+      canvas.width = tileW * cols
+      canvas.height = tileH * rows
+      const ctx = canvas.getContext('2d')
+      ctx.fillStyle = '#000'
+      ctx.fillRect(0, 0, canvas.width, canvas.height)
+
+      for (let k = 0; k < n; k++) {
+        const frame = k === 0 ? first : await decoder.decode({ frameIndex: indices[k] })
+        const x = (k % cols) * tileW
+        const y = Math.floor(k / cols) * tileH
+        ctx.drawImage(frame.image, x, y, tileW, tileH)
+        ctx.fillStyle = 'rgba(0,0,0,0.65)'
+        ctx.fillRect(x, y, 36, 18)
+        ctx.fillStyle = '#fff'
+        ctx.font = '12px sans-serif'
+        ctx.textBaseline = 'top'
+        ctx.fillText(`${k + 1}/${n}`, x + 4, y + 3)
+        frame.image.close()
+      }
+      return { dataURL: canvas.toDataURL('image/png'), frames: n }
+    } finally {
+      decoder.close?.()
+    }
+  }
+
   async function addFile(file) {
     if (!file) return
     attachError = null
     try {
-      if (file.type.startsWith('image/')) {
+      if (file.type === 'image/gif') {
+        const sprite = await gifToSpritesheet(file).catch(() => null)
+        if (sprite) {
+          attachments = [...attachments, {
+            kind: 'image',
+            name: `${file.name} (${sprite.frames}-frame sheet)`,
+            dataURL: sprite.dataURL,
+            isSpritesheet: true,
+            frames: sprite.frames,
+          }]
+          return
+        }
+        const dataURL = await readImage(file)
+        attachments = [...attachments, { kind: 'image', name: file.name, dataURL }]
+      } else if (file.type.startsWith('image/')) {
         const dataURL = await readImage(file)
         attachments = [...attachments, { kind: 'image', name: file.name, dataURL }]
       } else {
