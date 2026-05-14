@@ -130,7 +130,10 @@
 </div>
 
 <style>
-  .pane { padding: 1rem; display: flex; flex-direction: column; gap: 1rem; max-width: 680px; }
+  .pane {
+    padding: 1rem; display: flex; flex-direction: column; gap: 1rem;
+    max-width: 680px; height: 100%; overflow-y: auto;
+  }
   .header { display: flex; align-items: center; justify-content: space-between; }
   .section-label { color: var(--fg-5); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; }
   .hint { color: var(--fg-5); font-size: 0.85rem; }

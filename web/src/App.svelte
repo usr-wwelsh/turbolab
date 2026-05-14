@@ -121,6 +121,23 @@
       <Settings />
     {/if}
   </div>
+  <nav class="mobile-nav">
+    <button class:active={tab === 'chat'} on:click={() => tab = 'chat'}>
+      <span class="nav-icon">▣</span><span class="nav-label">Chat</span>
+    </button>
+    <button class:active={tab === 'models'} on:click={() => tab = 'models'}>
+      <span class="nav-icon">⬇</span><span class="nav-label">Models</span>
+    </button>
+    <button class:active={tab === 'memory'} on:click={() => tab = 'memory'}>
+      <span class="nav-icon">◈</span><span class="nav-label">Memory</span>
+    </button>
+    <button class:active={tab === 'usage'} on:click={() => tab = 'usage'}>
+      <span class="nav-icon">▤</span><span class="nav-label">Usage</span>
+    </button>
+    <button class:active={tab === 'settings'} on:click={() => tab = 'settings'}>
+      <span class="nav-icon">⚙</span><span class="nav-label">Settings</span>
+    </button>
+  </nav>
 </div>
 
 <style>
@@ -219,11 +236,17 @@
     --rate-note: #aaa;
   }
   :global(*, *::before, *::after) { box-sizing: border-box; }
+  :global(*) { -webkit-tap-highlight-color: transparent; }
   :global(body) {
     margin: 0; background: var(--bg); color: var(--fg);
-    font-family: monospace; height: 100vh;
+    font-family: monospace; height: 100dvh;
+    -webkit-text-size-adjust: 100%;
+    overscroll-behavior: none;
   }
-  .app { display: flex; flex-direction: column; height: 100vh; }
+  .app {
+    display: flex; flex-direction: column; height: 100dvh;
+  }
+  .mobile-nav { display: none; }
   .tabs {
     display: flex; gap: 0; border-bottom: 1px solid var(--border-subtle);
   }
@@ -263,4 +286,49 @@
   }
   .clear-session:hover { color: var(--error); border-color: var(--error); }
   .content { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
+
+  @media (max-width: 640px) {
+    .tabs { display: none; }
+    .session-bar {
+      padding: 0.35rem 0.5rem; gap: 0.35rem;
+      scrollbar-width: none;
+      user-select: none; -webkit-user-select: none;
+    }
+    .session-bar::-webkit-scrollbar { display: none; }
+    .session-tab {
+      padding: 0.35rem 0.7rem; font-size: 0.78rem;
+      border-radius: 999px; border-color: var(--border-subtle);
+    }
+    .session-tab.active { background: var(--bg-accent); }
+    .new-session {
+      padding: 0.35rem 0.7rem; border-radius: 999px;
+      font-size: 1rem; line-height: 1;
+    }
+    .clear-session {
+      font-size: 0.72rem; padding: 0.35rem 0.7rem; border-radius: 999px;
+    }
+
+    .mobile-nav {
+      display: flex; flex-shrink: 0;
+      border-top: 1px solid var(--border-subtle);
+      background: var(--bg-elev);
+      padding-bottom: env(safe-area-inset-bottom);
+      user-select: none; -webkit-user-select: none;
+    }
+    .mobile-nav button {
+      flex: 1; background: none; border: none;
+      color: var(--fg-5); cursor: pointer;
+      font-family: monospace; font-size: 0.68rem;
+      padding: 0.4rem 0.2rem 0.5rem;
+      display: flex; flex-direction: column;
+      align-items: center; gap: 0.15rem;
+      border-top: 2px solid transparent; margin-top: -1px;
+      transition: color 0.15s;
+    }
+    .mobile-nav button.active {
+      color: var(--accent); border-top-color: var(--accent);
+    }
+    .nav-icon { font-size: 1.05rem; line-height: 1; }
+    .nav-label { font-size: 0.65rem; letter-spacing: 0.02em; }
+  }
 </style>

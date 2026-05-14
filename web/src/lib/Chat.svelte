@@ -288,6 +288,13 @@
   function removeAttachment(i) {
     attachments = attachments.filter((_, idx) => idx !== i)
   }
+
+  function autoResize() {
+    if (!textareaEl) return
+    textareaEl.style.height = 'auto'
+    textareaEl.style.height = Math.min(textareaEl.scrollHeight, 140) + 'px'
+  }
+  $: { input; if (typeof queueMicrotask !== 'undefined') queueMicrotask(autoResize) }
 </script>
 
 <div
@@ -375,14 +382,19 @@
       bind:value={input}
       on:keydown={onKey}
       on:paste={onPaste}
-      placeholder={modelRunning ? 'Message... (↑↓ history, drop/paste files)' : 'Load a model to chat'}
+      on:input={autoResize}
+      placeholder={modelRunning ? 'Message...' : 'Load a model to chat'}
       disabled={!modelRunning || streaming}
-      rows="2"
+      rows="1"
     ></textarea>
     {#if streaming}
-      <button class="stop-btn" on:click={stop}>Stop</button>
+      <button class="send-btn stop-btn" on:click={stop}>
+        <span class="send-label">Stop</span><span class="send-icon">■</span>
+      </button>
     {:else}
-      <button on:click={send} disabled={!modelRunning}>Send</button>
+      <button class="send-btn" on:click={send} disabled={!modelRunning || (!input.trim() && attachments.length === 0)}>
+        <span class="send-label">Send</span><span class="send-icon">↑</span>
+      </button>
     {/if}
   </div>
   {#if draggingOver}
@@ -472,6 +484,7 @@
   }
   button:disabled { opacity: 0.4; cursor: default; }
   .stop-btn { background: var(--bg-card); color: var(--error); border: 1px solid var(--error); }
+  .send-icon { display: none; }
 
   .drop-overlay {
     position: absolute; inset: 0;
@@ -495,4 +508,85 @@
   .inject-item { display: flex; gap: 0.5rem; align-items: baseline; }
   .inject-id { color: var(--inject-id-fg); font-size: 0.7rem; flex-shrink: 0; }
   .inject-content { color: var(--inject-fg-dim); font-size: 0.8rem; white-space: pre-wrap; word-break: break-word; }
+
+  @media (max-width: 640px) {
+    .messages {
+      padding: 0.7rem 0.6rem 0.4rem; gap: 0.45rem;
+      scrollbar-width: none;
+      overscroll-behavior: contain;
+    }
+    .messages::-webkit-scrollbar { display: none; }
+    .empty { margin-top: 30vh; font-size: 0.85rem; }
+
+    .msg {
+      flex-direction: column; gap: 0.15rem;
+      animation: msg-in 0.18s ease-out;
+    }
+    .msg.user { align-items: flex-end; }
+    .msg.assistant { align-items: flex-start; }
+    .role { display: none; }
+    .content-wrap { max-width: 86%; min-width: 0; }
+    .content {
+      font-size: 0.9rem; line-height: 1.4;
+      padding: 0.55rem 0.75rem;
+      border-radius: 16px;
+      background: var(--bg-card);
+      border: 1px solid var(--border-faint);
+    }
+    .msg.user .content {
+      background: var(--bg-accent);
+      border-color: color-mix(in srgb, var(--accent) 28%, transparent);
+      border-radius: 16px 16px 4px 16px;
+    }
+    .msg.assistant .content {
+      border-radius: 16px 16px 16px 4px;
+    }
+    @keyframes msg-in {
+      from { opacity: 0; transform: translateY(4px); }
+      to { opacity: 1; transform: none; }
+    }
+
+    .img-row { margin-bottom: 0.35rem; }
+    .att-img { max-width: 70vw; max-height: 60vh; border-radius: 12px; }
+
+    .att-bar {
+      padding: 0.4rem 0.6rem; gap: 0.3rem;
+      border-top: none;
+    }
+    .att-chip { border-radius: 999px; padding: 0.2rem 0.55rem; }
+    .att-name { max-width: 100px; }
+
+    .input-row {
+      padding: 0.5rem 0.6rem 0.6rem;
+      gap: 0.4rem; align-items: flex-end;
+      border-top: 1px solid var(--border-faint);
+      background: var(--bg);
+    }
+    .attach-btn {
+      width: 40px; height: 40px; min-width: 40px;
+      padding: 0; border-radius: 50%;
+      background: var(--bg-card); align-self: flex-end;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.05rem;
+    }
+    textarea {
+      font-size: 16px; line-height: 1.35;
+      padding: 0.6rem 0.95rem;
+      border-radius: 20px;
+      background: var(--bg-card);
+      min-height: 40px; max-height: 140px;
+    }
+    .send-btn {
+      width: 40px; height: 40px; min-width: 40px;
+      padding: 0; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      align-self: flex-end; font-size: 1.1rem;
+    }
+    .send-btn:disabled { opacity: 0.35; }
+    .send-label { display: none; }
+    .send-icon { display: inline; line-height: 1; }
+    .stop-btn { border-radius: 50%; }
+
+    .generating { padding: 0.2rem 0.7rem; font-size: 0.7rem; }
+  }
 </style>
