@@ -6,27 +6,36 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"unicode/utf8"
 )
 
 func ConvertToMarkdown(filename string, data []byte) (string, error) {
 	ext := strings.ToLower(filepath.Ext(filename))
 	switch ext {
-	case ".md", ".markdown":
-		return string(data), nil
-	case ".txt":
+	case ".md", ".markdown", ".txt":
 		return string(data), nil
 	}
-	from := extToFormat(ext)
-	cmd := exec.Command("pandoc", "--from", from, "--to", "gfm")
-	cmd.Stdin = bytes.NewReader(data)
-	out, err := cmd.Output()
-	if err != nil {
-		return "", fmt.Errorf("pandoc conversion failed (install pandoc for %s support): %v", ext, err)
+	if from := extToPandocFormat(ext); from != "" {
+		cmd := exec.Command("pandoc", "--from", from, "--to", "gfm")
+		cmd.Stdin = bytes.NewReader(data)
+		out, err := cmd.Output()
+		if err != nil {
+			return "", fmt.Errorf("pandoc conversion failed (install pandoc for %s support): %v", ext, err)
+		}
+		return string(out), nil
 	}
-	return string(out), nil
+	// Unknown extension: pass through if plausibly text (utf-8, no NULs).
+	if isPlausiblyText(data) {
+		lang := strings.TrimPrefix(ext, ".")
+		if lang == "" {
+			return string(data), nil
+		}
+		return "```" + lang + "\n" + string(data) + "\n```", nil
+	}
+	return "", fmt.Errorf("unsupported file type: %s", ext)
 }
 
-func extToFormat(ext string) string {
+func extToPandocFormat(ext string) string {
 	switch ext {
 	case ".html", ".htm":
 		return "html"
@@ -40,7 +49,22 @@ func extToFormat(ext string) string {
 		return "rst"
 	case ".tex":
 		return "latex"
-	default:
-		return "plain"
+	case ".epub":
+		return "epub"
 	}
+	return ""
+}
+
+func isPlausiblyText(data []byte) bool {
+	if len(data) == 0 {
+		return true
+	}
+	sample := data
+	if len(sample) > 8192 {
+		sample = sample[:8192]
+	}
+	if bytes.IndexByte(sample, 0) >= 0 {
+		return false
+	}
+	return utf8.Valid(sample)
 }
