@@ -69,22 +69,22 @@
 
 <style>
   .pane { padding: 1rem; display: flex; flex-direction: column; gap: 0.75rem; max-width: 480px; }
-  .section-label { color: #555; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; }
-  .hint { color: #555; font-size: 0.8rem; margin: 0; }
+  .section-label { color: var(--fg-5); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; }
+  .hint { color: var(--fg-5); font-size: 0.8rem; margin: 0; }
   .field { display: flex; flex-direction: column; gap: 0.25rem; }
   .field.row { flex-direction: row; align-items: center; gap: 0.5rem; }
-  label { font-size: 0.8rem; color: #888; }
+  label { font-size: 0.8rem; color: var(--fg-3); }
   input, select {
-    padding: 0.4rem 0.6rem; background: #1a1a1a;
-    border: 1px solid #333; color: #eee;
+    padding: 0.4rem 0.6rem; background: var(--bg-card);
+    border: 1px solid var(--border); color: var(--fg);
     border-radius: 4px; font-family: monospace; font-size: 0.9rem;
   }
   input[type="checkbox"] { width: 1rem; height: 1rem; padding: 0; }
   button {
-    padding: 0.5rem 1.25rem; background: #7cf; color: #000;
+    padding: 0.5rem 1.25rem; background: var(--accent); color: var(--accent-fg);
     border: none; border-radius: 4px; cursor: pointer;
     font-weight: bold; align-self: flex-start;
   }
-  .ok { color: #4f4; font-size: 0.85rem; }
-  .err { color: #f66; font-size: 0.85rem; }
+  .ok { color: var(--success); font-size: 0.85rem; }
+  .err { color: var(--error); font-size: 0.85rem; }
 </style>

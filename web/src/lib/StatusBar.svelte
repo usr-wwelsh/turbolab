@@ -1,9 +1,22 @@
 <script>
+  import { theme, setTheme } from './theme.js'
+
   export let status = null
   export let crashed = false
   export let inferring = false
   export let onShowLogs = () => {}
 
+  function cycleTheme() {
+    const order = ['auto', 'light', 'dark']
+    const next = order[(order.indexOf($theme) + 1) % order.length]
+    setTheme(next)
+  }
+
+  function themeIcon(t) {
+    if (t === 'light') return '☀'
+    if (t === 'dark') return '☾'
+    return '◐'
+  }
 </script>
 
 <div class="status-bar">
@@ -39,35 +52,44 @@
   {#if crashed}
     <button class="crash-badge" on:click={onShowLogs}>⚠ crashed — view logs</button>
   {/if}
+  <button class="theme-btn" on:click={cycleTheme} title="Theme: {$theme} (click to cycle)">
+    {themeIcon($theme)} {$theme}
+  </button>
 </div>
 
 <style>
   .status-bar {
     display: flex; align-items: center; gap: 1.5rem;
-    padding: 0.6rem 1.2rem; background: #111;
-    border-bottom: 1px solid #222; font-size: 0.85rem; font-family: monospace;
+    padding: 0.6rem 1.2rem; background: var(--bg-elev);
+    border-bottom: 1px solid var(--border-subtle); font-size: 0.85rem; font-family: monospace;
     flex-shrink: 0;
   }
-  .logo { color: #7cf; font-weight: bold; }
-  .model { color: #666; }
-  .model.running { color: #4f4; }
-  .model.loading { color: #fa0; animation: pulse 1.5s ease-in-out infinite; }
+  .logo { color: var(--accent); font-weight: bold; }
+  .model { color: var(--fg-4); }
+  .model.running { color: var(--success); }
+  .model.loading { color: var(--warn); animation: pulse 1.5s ease-in-out infinite; }
   .meters { display: flex; gap: 1rem; margin-left: auto; align-items: center; }
   .meter { display: flex; align-items: center; gap: 0.4rem; }
-  .meter-label { color: #555; font-size: 0.75rem; width: 2.5rem; }
-  .meter-val { color: #aaa; font-size: 0.75rem; white-space: nowrap; margin-left: 0.5rem; }
-  .bar { width: 60px; height: 5px; background: #222; border-radius: 3px; overflow: hidden; }
+  .meter-label { color: var(--fg-5); font-size: 0.75rem; width: 2.5rem; }
+  .meter-val { color: var(--fg-2); font-size: 0.75rem; white-space: nowrap; margin-left: 0.5rem; }
+  .bar { width: 60px; height: 5px; background: var(--border-subtle); border-radius: 3px; overflow: hidden; }
   .fill { height: 100%; border-radius: 3px; transition: width 1s; }
-  .fill.cpu { background: #a7f; }
-  .fill.ram { background: #7cf; }
+  .fill.cpu { background: var(--purple); }
+  .fill.ram { background: var(--accent); }
   .inferring {
-    color: #a7f; font-size: 0.8rem; animation: pulse 1.5s ease-in-out infinite;
+    color: var(--purple); font-size: 0.8rem; animation: pulse 1.5s ease-in-out infinite;
   }
   .crash-badge {
-    background: none; border: 1px solid #f66; color: #f66;
+    background: none; border: 1px solid var(--error); color: var(--error);
     padding: 0.2rem 0.6rem; border-radius: 4px; cursor: pointer;
     font-family: monospace; font-size: 0.8rem; animation: pulse 2s infinite;
   }
+  .theme-btn {
+    background: none; border: 1px solid var(--border); color: var(--fg-3);
+    padding: 0.2rem 0.55rem; border-radius: 4px; cursor: pointer;
+    font-family: monospace; font-size: 0.75rem;
+  }
+  .theme-btn:hover { color: var(--accent); border-color: var(--accent); }
   @keyframes pulse {
     0%, 100% { opacity: 1; }
     50% { opacity: 0.5; }

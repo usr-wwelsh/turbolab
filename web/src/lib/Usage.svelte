@@ -70,8 +70,8 @@
       <svg viewBox="0 0 {W} {H}" width="100%" preserveAspectRatio="none">
         <!-- grid lines + y labels -->
         {#each yTicks as t}
-          <line x1={PL} y1={t.y} x2={W - PR} y2={t.y} stroke="#1c1c1c" stroke-width="1"/>
-          <text x={PL - 4} y={t.y + 4} text-anchor="end" fill="#444" font-size="11" font-family="monospace">
+          <line x1={PL} y1={t.y} x2={W - PR} y2={t.y} stroke="var(--border-faint)" stroke-width="1"/>
+          <text x={PL - 4} y={t.y + 4} text-anchor="end" fill="var(--fg-6)" font-size="11" font-family="monospace">
             {yLabel(t.v)}
           </text>
         {/each}
@@ -82,16 +82,16 @@
           {@const ch = (day.completion_tokens / maxVal) * cH}
           {@const th = ph + ch}
           <!-- input (bottom, blue) -->
-          <rect x={barX(i)} y={PT + cH - th} width={bw} height={ph} fill="#2a5fc4bb"/>
+          <rect x={barX(i)} y={PT + cH - th} width={bw} height={ph} fill="var(--chart-input)"/>
           <!-- output (top, cyan) -->
-          <rect x={barX(i)} y={PT + cH - ch} width={bw} height={ch} fill="#55ccff99"/>
+          <rect x={barX(i)} y={PT + cH - ch} width={bw} height={ch} fill="var(--chart-output)"/>
         {/each}
 
         <!-- x labels -->
         {#each data.days as day, i}
           {#if i % labelStep === 0}
             <text x={barX(i) + bw / 2} y={H - 6}
-              text-anchor="middle" fill="#444" font-size="10" font-family="monospace">
+              text-anchor="middle" fill="var(--fg-6)" font-size="10" font-family="monospace">
               {day.date.slice(5)}
             </text>
           {/if}
@@ -132,36 +132,36 @@
 <style>
   .pane { padding: 1rem; display: flex; flex-direction: column; gap: 1rem; max-width: 680px; }
   .header { display: flex; align-items: center; justify-content: space-between; }
-  .section-label { color: #555; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; }
-  .hint { color: #555; font-size: 0.85rem; }
+  .section-label { color: var(--fg-5); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; }
+  .hint { color: var(--fg-5); font-size: 0.85rem; }
 
   .day-btns { display: flex; gap: 0.25rem; }
   .day-btns button {
-    padding: 0.2rem 0.6rem; background: none; border: 1px solid #333;
-    color: #555; cursor: pointer; font-family: monospace; font-size: 0.8rem; border-radius: 3px;
+    padding: 0.2rem 0.6rem; background: none; border: 1px solid var(--border);
+    color: var(--fg-5); cursor: pointer; font-family: monospace; font-size: 0.8rem; border-radius: 3px;
   }
-  .day-btns button.active { color: #7cf; border-color: #7cf; }
+  .day-btns button.active { color: var(--accent); border-color: var(--accent); }
 
   .chart-wrap {
-    background: #0e0e0e; border: 1px solid #1e1e1e; border-radius: 4px; padding: 0.5rem 0.5rem 0.25rem;
+    background: var(--bg-elev); border: 1px solid var(--border-faint); border-radius: 4px; padding: 0.5rem 0.5rem 0.25rem;
   }
   .legend {
-    display: flex; gap: 1rem; font-size: 0.75rem; color: #555;
+    display: flex; gap: 1rem; font-size: 0.75rem; color: var(--fg-5);
     justify-content: flex-end; padding-top: 0.25rem;
   }
   .dot { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: middle; }
-  .dot.input  { background: #2a5fc4bb; }
-  .dot.output { background: #55ccff99; }
+  .dot.input  { background: var(--chart-input); }
+  .dot.output { background: var(--chart-output); }
 
   .stats { display: flex; gap: 0.75rem; flex-wrap: wrap; }
   .stat {
-    background: #111; border: 1px solid #1e1e1e; border-radius: 4px;
+    background: var(--bg-elev); border: 1px solid var(--border-faint); border-radius: 4px;
     padding: 0.6rem 1rem; flex: 1; min-width: 100px;
   }
-  .stat.accent { border-color: #2a2a14; background: #141408; }
-  .stat-val { font-size: 1.2rem; color: #eee; }
-  .stat.accent .stat-val { color: #cf4; }
-  .stat-lbl { font-size: 0.72rem; color: #555; margin-top: 0.15rem; }
+  .stat.accent { border-color: var(--stat-accent-border); background: var(--stat-accent-bg); }
+  .stat-val { font-size: 1.2rem; color: var(--fg); }
+  .stat.accent .stat-val { color: var(--stat-accent-fg); }
+  .stat-lbl { font-size: 0.72rem; color: var(--fg-5); margin-top: 0.15rem; }
 
-  .rates-note { font-size: 0.72rem; color: #383838; }
+  .rates-note { font-size: 0.72rem; color: var(--rate-note); }
 </style>

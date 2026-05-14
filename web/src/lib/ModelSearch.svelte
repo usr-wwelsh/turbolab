@@ -211,57 +211,57 @@
 
 <style>
   .pane { padding: 1rem; display: flex; flex-direction: column; height: 100%; overflow-y: auto; gap: 0.5rem; }
-  .section-label { color: #555; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; padding: 0.25rem 0; }
+  .section-label { color: var(--fg-5); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; padding: 0.25rem 0; }
   .local-list { display: flex; flex-direction: column; gap: 0.25rem; margin-bottom: 0.5rem; }
   .local-row {
     display: flex; align-items: center; justify-content: space-between;
-    padding: 0.4rem 0.6rem; background: #1a1a1a; border-radius: 4px;
+    padding: 0.4rem 0.6rem; background: var(--bg-card); border-radius: 4px;
   }
   .local-row.incompatible { opacity: 0.5; }
   .local-info { display: flex; align-items: center; gap: 0.5rem; }
-  .model-size { font-size: 0.75rem; color: #666; min-width: 3.5rem; text-align: right; }
-  .compat-badge { font-size: 0.75rem; color: #4f4; }
-  .local-row.incompatible .compat-badge { color: #f66; }
-  .local-row.gguf .compat-badge { color: #fa0; }
-  tr.gguf .model-id { color: #7cf; }
-  tr.gguf .compat { color: #fa0; }
+  .model-size { font-size: 0.75rem; color: var(--fg-4); min-width: 3.5rem; text-align: right; }
+  .compat-badge { font-size: 0.75rem; color: var(--success); }
+  .local-row.incompatible .compat-badge { color: var(--error); }
+  .local-row.gguf .compat-badge { color: var(--warn); }
+  tr.gguf .model-id { color: var(--accent); }
+  tr.gguf .compat { color: var(--warn); }
   .load-note {
-    padding: 0.4rem 0.75rem; background: #1a1200; border: 1px solid #fa0;
-    border-radius: 4px; color: #fa0; font-size: 0.8rem;
+    padding: 0.4rem 0.75rem; background: var(--warn-bg); border: 1px solid var(--warn);
+    border-radius: 4px; color: var(--warn); font-size: 0.8rem;
   }
   .local-actions { display: flex; gap: 0.4rem; align-items: center; }
-  .empty-local { color: #444; font-size: 0.85rem; margin-bottom: 0.5rem; }
+  .empty-local { color: var(--fg-6); font-size: 0.85rem; margin-bottom: 0.5rem; }
   .search-row { display: flex; gap: 0.5rem; }
   .search-input {
     flex: 1; padding: 0.5rem 0.75rem;
-    background: #1a1a1a; border: 1px solid #333; color: #eee;
+    background: var(--bg-card); border: 1px solid var(--border); color: var(--fg);
     border-radius: 4px; font-family: monospace;
   }
   .bits-select, .bits-select-sm {
-    padding: 0.5rem; background: #1a1a1a;
-    border: 1px solid #333; color: #eee; border-radius: 4px;
+    padding: 0.5rem; background: var(--bg-card);
+    border: 1px solid var(--border); color: var(--fg); border-radius: 4px;
   }
   .bits-select-sm { padding: 0.25rem; font-size: 0.8rem; }
   button {
-    padding: 0.5rem 1rem; background: #7cf; color: #000;
+    padding: 0.5rem 1rem; background: var(--accent); color: var(--accent-fg);
     border: none; border-radius: 4px; cursor: pointer; font-weight: bold;
   }
   button:disabled { opacity: 0.5; cursor: default; }
   .results-wrap { overflow-y: visible; }
   .results { width: 100%; border-collapse: collapse; font-family: monospace; font-size: 0.85rem; }
-  .results th { text-align: left; color: #555; padding: 0.4rem 0.5rem; border-bottom: 1px solid #222; }
-  .results td { padding: 0.4rem 0.5rem; border-bottom: 1px solid #1a1a1a; color: #ccc; }
-  .model-id { color: #7cf; }
-  .size { color: #888; }
+  .results th { text-align: left; color: var(--fg-5); padding: 0.4rem 0.5rem; border-bottom: 1px solid var(--border-subtle); }
+  .results td { padding: 0.4rem 0.5rem; border-bottom: 1px solid var(--border-faint); color: var(--fg-1); }
+  .model-id { color: var(--accent); }
+  .size { color: var(--fg-3); }
   .compat { text-align: center; }
-  tr.incompatible .model-id { color: #555; }
+  tr.incompatible .model-id { color: var(--fg-5); }
   .load-btn { padding: 0.25rem 0.75rem; font-size: 0.8rem; }
   .delete-btn {
-    padding: 0.25rem 0.5rem; font-size: 0.85rem; background: #f66; color: #fff;
+    padding: 0.25rem 0.5rem; font-size: 0.85rem; background: var(--error); color: #fff;
     border: none; border-radius: 3px; cursor: pointer; font-weight: bold;
   }
-  .delete-btn:hover:not(:disabled) { background: #d44; }
+  .delete-btn:hover:not(:disabled) { filter: brightness(0.85); }
   .delete-btn:disabled { opacity: 0.5; cursor: default; }
-  .gguf-hint { font-size: 0.75rem; color: #fa0; cursor: help; }
-  .gguf-badge { font-size: 0.75rem; color: #fa0; }
+  .gguf-hint { font-size: 0.75rem; color: var(--warn); cursor: help; }
+  .gguf-badge { font-size: 0.75rem; color: var(--warn); }
 </style>

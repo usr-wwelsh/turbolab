@@ -8,6 +8,7 @@
   import Usage from './lib/Usage.svelte'
   import Memory from './lib/Memory.svelte'
   import { getStatus } from './lib/api.js'
+  import { initTheme } from './lib/theme.js'
 
   let tab = 'chat'
   let status = null
@@ -31,6 +32,7 @@
   }
 
   onMount(() => {
+    initTheme()
     refreshStatus()
     const interval = setInterval(refreshStatus, 3000)
 
@@ -122,49 +124,143 @@
 </div>
 
 <style>
+  :global(:root) {
+    --bg: #0d0d0d;
+    --bg-elev: #111;
+    --bg-card: #1a1a1a;
+    --bg-deep: #0a0a0a;
+    --bg-accent: #0d1a22;
+    --border: #333;
+    --border-soft: #2a2a2a;
+    --border-subtle: #222;
+    --border-faint: #1e1e1e;
+    --fg: #eee;
+    --fg-1: #ccc;
+    --fg-2: #aaa;
+    --fg-3: #888;
+    --fg-4: #666;
+    --fg-5: #555;
+    --fg-6: #444;
+    --accent: #7cf;
+    --accent-fg: #000;
+    --success: #4f4;
+    --success-dim: #6a6;
+    --warn: #fa0;
+    --warn-bg: #1a1200;
+    --error: #f66;
+    --error-bg: #1a0808;
+    --error-border: #2a1212;
+    --purple: #a7f;
+    --tag-bg: #1a2a1a;
+    --tag-fg: #6a6;
+    --tag-border: #2a4a2a;
+    --inject-fg: #5a8a6a;
+    --inject-fg-dim: #6a8a7a;
+    --inject-border: #1a3a2a;
+    --inject-id-fg: #2a4a3a;
+    --graph-edge: #2a3a4a;
+    --graph-label: #445;
+    --graph-node: #111827;
+    --graph-node-sel: #0d2233;
+    --graph-node-border: #2a4a6a;
+    --graph-node-text: #9ab;
+    --chart-input: #2a5fc4bb;
+    --chart-output: #55ccff99;
+    --stat-accent-bg: #141408;
+    --stat-accent-border: #2a2a14;
+    --stat-accent-fg: #cf4;
+    --rate-note: #383838;
+  }
+  :global(:root[data-theme="light"]) {
+    --bg: #fafafa;
+    --bg-elev: #f0f0f0;
+    --bg-card: #fff;
+    --bg-deep: #f5f5f5;
+    --bg-accent: #e0f0fa;
+    --border: #bbb;
+    --border-soft: #ccc;
+    --border-subtle: #d5d5d5;
+    --border-faint: #e5e5e5;
+    --fg: #1a1a1a;
+    --fg-1: #333;
+    --fg-2: #444;
+    --fg-3: #555;
+    --fg-4: #777;
+    --fg-5: #888;
+    --fg-6: #aaa;
+    --accent: #06c;
+    --accent-fg: #fff;
+    --success: #060;
+    --success-dim: #390;
+    --warn: #c70;
+    --warn-bg: #fff8e0;
+    --error: #c33;
+    --error-bg: #fde8e8;
+    --error-border: #f5b0b0;
+    --purple: #639;
+    --tag-bg: #e8f5e8;
+    --tag-fg: #060;
+    --tag-border: #b0d8b0;
+    --inject-fg: #060;
+    --inject-fg-dim: #283;
+    --inject-border: #b0d8b0;
+    --inject-id-fg: #6a8a7a;
+    --graph-edge: #a8b8c8;
+    --graph-label: #889;
+    --graph-node: #f0f4fa;
+    --graph-node-sel: #e0f0fa;
+    --graph-node-border: #88a8c8;
+    --graph-node-text: #345;
+    --chart-input: #2a5fc4cc;
+    --chart-output: #66bbeecc;
+    --stat-accent-bg: #f8f8e0;
+    --stat-accent-border: #d8d890;
+    --stat-accent-fg: #460;
+    --rate-note: #aaa;
+  }
   :global(*, *::before, *::after) { box-sizing: border-box; }
   :global(body) {
-    margin: 0; background: #0d0d0d; color: #eee;
+    margin: 0; background: var(--bg); color: var(--fg);
     font-family: monospace; height: 100vh;
   }
   .app { display: flex; flex-direction: column; height: 100vh; }
   .tabs {
-    display: flex; gap: 0; border-bottom: 1px solid #222;
+    display: flex; gap: 0; border-bottom: 1px solid var(--border-subtle);
   }
   .tabs button {
     padding: 0.5rem 1.5rem; background: none; border: none;
-    color: #555; cursor: pointer; font-family: monospace; font-size: 0.9rem;
+    color: var(--fg-5); cursor: pointer; font-family: monospace; font-size: 0.9rem;
     border-bottom: 2px solid transparent; margin-bottom: -1px;
   }
-  .tabs button.active { color: #7cf; border-bottom-color: #7cf; }
+  .tabs button.active { color: var(--accent); border-bottom-color: var(--accent); }
   .session-bar {
     display: flex; align-items: center; gap: 2px;
-    padding: 0.25rem 0.5rem; border-bottom: 1px solid #1a1a1a;
-    background: #111; overflow-x: auto;
+    padding: 0.25rem 0.5rem; border-bottom: 1px solid var(--border-faint);
+    background: var(--bg-elev); overflow-x: auto;
   }
   .session-tab {
-    padding: 0.2rem 0.6rem; background: none; border: 1px solid #333;
-    color: #555; cursor: pointer; font-family: monospace; font-size: 0.8rem;
+    padding: 0.2rem 0.6rem; background: none; border: 1px solid var(--border);
+    color: var(--fg-5); cursor: pointer; font-family: monospace; font-size: 0.8rem;
     border-radius: 3px; display: flex; align-items: center; gap: 0.3rem;
     white-space: nowrap;
   }
-  .session-tab.active { color: #7cf; border-color: #7cf; background: #0d1a22; }
+  .session-tab.active { color: var(--accent); border-color: var(--accent); background: var(--bg-accent); }
   .session-tab .close {
-    color: #444; font-size: 0.9rem; line-height: 1; padding: 0 0.1rem;
+    color: var(--fg-6); font-size: 0.9rem; line-height: 1; padding: 0 0.1rem;
     background: none; border: none; cursor: pointer; font-family: monospace;
   }
-  .session-tab .close:hover { color: #f66; }
+  .session-tab .close:hover { color: var(--error); }
   .new-session {
-    padding: 0.2rem 0.5rem; background: none; border: 1px solid #333;
-    color: #4f4; cursor: pointer; font-family: monospace; font-size: 0.9rem;
+    padding: 0.2rem 0.5rem; background: none; border: 1px solid var(--border);
+    color: var(--success); cursor: pointer; font-family: monospace; font-size: 0.9rem;
     border-radius: 3px; margin-left: 0.25rem;
   }
-  .new-session:hover { border-color: #4f4; }
+  .new-session:hover { border-color: var(--success); }
   .clear-session {
-    padding: 0.2rem 0.5rem; background: none; border: 1px solid #333;
-    color: #555; cursor: pointer; font-family: monospace; font-size: 0.75rem;
+    padding: 0.2rem 0.5rem; background: none; border: 1px solid var(--border);
+    color: var(--fg-5); cursor: pointer; font-family: monospace; font-size: 0.75rem;
     border-radius: 3px; margin-left: auto;
   }
-  .clear-session:hover { color: #f66; border-color: #f66; }
+  .clear-session:hover { color: var(--error); border-color: var(--error); }
   .content { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
 </style>
