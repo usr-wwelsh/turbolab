@@ -110,6 +110,65 @@ func rankGGUF(filename string) int {
 	return 99
 }
 
+// SelectMMProj picks the best multimodal projector (mmproj-*.gguf) from a repo
+// file list. Returns "" if no projector is present. Prefers F16 over BF16/Q8.
+func SelectMMProj(files []ModelFile) string {
+	best := ""
+	bestRank := 999
+	for _, f := range files {
+		lower := strings.ToLower(f.Filename)
+		if !strings.HasSuffix(lower, ".gguf") {
+			continue
+		}
+		if !strings.Contains(lower, "mmproj") {
+			continue
+		}
+		upper := strings.ToUpper(f.Filename)
+		rank := 99
+		switch {
+		case strings.Contains(upper, "F16"):
+			rank = 1
+		case strings.Contains(upper, "BF16"):
+			rank = 2
+		case strings.Contains(upper, "F32"):
+			rank = 3
+		case strings.Contains(upper, "Q8"):
+			rank = 4
+		case strings.Contains(upper, "Q6"):
+			rank = 5
+		case strings.Contains(upper, "Q5"):
+			rank = 6
+		case strings.Contains(upper, "Q4"):
+			rank = 7
+		}
+		if rank < bestRank {
+			bestRank = rank
+			best = f.Filename
+		}
+	}
+	return best
+}
+
+// FindMMProjInDir returns the path to an mmproj-*.gguf file alongside a model,
+// or "" if none is present. Allows users to drop an mmproj next to a local
+// GGUF without going through HF download.
+func FindMMProjInDir(dir string) string {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return ""
+	}
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		n := strings.ToLower(e.Name())
+		if strings.HasSuffix(n, ".gguf") && strings.Contains(n, "mmproj") {
+			return filepath.Join(dir, e.Name())
+		}
+	}
+	return ""
+}
+
 // GGUFCacheDir returns the directory where downloaded GGUFs are stored.
 func GGUFCacheDir() (string, error) {
 	home, err := os.UserHomeDir()

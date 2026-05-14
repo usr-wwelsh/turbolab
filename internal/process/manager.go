@@ -169,6 +169,10 @@ func (m *Manager) Start(modelID string) error {
 			"--flash-attn", "auto",
 			"--embeddings",
 		}
+		if mmproj := hf.FindMMProjInDir(filepath.Dir(modelID)); mmproj != "" {
+			fmt.Fprintf(io.MultiWriter(os.Stdout, m.logOut), "Vision projector found: %s\n", filepath.Base(mmproj))
+			args = append(args, "--mmproj", mmproj)
+		}
 		if m.cpuOnly {
 			args = append(args, "--n-gpu-layers", "0")
 		} else {
@@ -374,6 +378,7 @@ func resolveGGUFRepo(modelID string, logOut io.Writer) (string, error) {
 	// Check local cache before hitting the HF API.
 	if cached := hf.FindCachedGGUF(modelID); cached != "" {
 		fmt.Fprintf(logOut, "Using cached GGUF: %s\n", cached)
+		ensureMMProj(modelID, filepath.Dir(cached), logOut)
 		return cached, nil
 	}
 
@@ -394,7 +399,42 @@ func resolveGGUFRepo(modelID string, logOut io.Writer) (string, error) {
 	}
 	fmt.Fprintf(logOut, "Selected quant: %s (%.1f GB RAM available)\n", filename, availGB)
 
-	return hf.DownloadGGUF(modelID, filename, logOut)
+	localPath, err := hf.DownloadGGUF(modelID, filename, logOut)
+	if err != nil {
+		return "", err
+	}
+
+	if mmproj := hf.SelectMMProj(info.Siblings); mmproj != "" {
+		if hf.FindMMProjInDir(filepath.Dir(localPath)) == "" {
+			fmt.Fprintf(logOut, "Downloading vision projector: %s\n", mmproj)
+			if _, err := hf.DownloadGGUF(modelID, mmproj, logOut); err != nil {
+				fmt.Fprintf(logOut, "warning: mmproj download failed: %v (model will load without vision)\n", err)
+			}
+		}
+	}
+
+	return localPath, nil
+}
+
+// ensureMMProj fetches the multimodal projector for a cached model if the repo
+// ships one and it isn't already on disk. Non-fatal — failure leaves the model
+// loadable as text-only.
+func ensureMMProj(modelID, modelDir string, logOut io.Writer) {
+	if hf.FindMMProjInDir(modelDir) != "" {
+		return
+	}
+	info, err := hf.Info(modelID)
+	if err != nil {
+		return
+	}
+	mmproj := hf.SelectMMProj(info.Siblings)
+	if mmproj == "" {
+		return
+	}
+	fmt.Fprintf(logOut, "Downloading missing vision projector: %s\n", mmproj)
+	if _, err := hf.DownloadGGUF(modelID, mmproj, logOut); err != nil {
+		fmt.Fprintf(logOut, "warning: mmproj download failed: %v (model will load without vision)\n", err)
+	}
 }
 
 type logWriter struct {
