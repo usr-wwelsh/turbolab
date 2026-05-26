@@ -168,6 +168,7 @@ func (m *Manager) Start(modelID string) error {
 			"--cache-reuse", "256",
 			"--flash-attn", "auto",
 			"--embeddings",
+			"--pooling", "mean",  // OAI-compatible embeddings (e5 needs mean; 'none' returns per-token)
 		}
 		if mmproj := hf.FindMMProjInDir(filepath.Dir(modelID)); mmproj != "" {
 			fmt.Fprintf(io.MultiWriter(os.Stdout, m.logOut), "Vision projector found: %s\n", filepath.Base(mmproj))
