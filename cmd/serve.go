@@ -613,6 +613,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 		recordFn = usageDB.Record
 	}
 	inferenceProxy := proxy.New(inferencePort, recordFn)
+	embedProxy := proxy.New(idPort, recordFn)
 	backendURL := fmt.Sprintf("http://localhost:%d", inferencePort)
 	backendClient := &http.Client{Timeout: 10 * time.Minute}
 
@@ -849,6 +850,18 @@ func runServe(cmd *cobra.Command, args []string) error {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{"object": "list", "data": data})
+	})
+
+	// Embeddings route to the dedicated ID/embedding model (idPort), not the
+	// chat model. Must be registered before the "/v1/" catch-all.
+	mux.HandleFunc("/v1/embeddings", func(w http.ResponseWriter, r *http.Request) {
+		if !idMgr.Running() {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusServiceUnavailable)
+			w.Write([]byte(`{"error":{"message":"no embedding model loaded","type":"service_unavailable"}}`))
+			return
+		}
+		embedProxy.ServeHTTP(w, r)
 	})
 
 	mux.Handle("/v1/", inferenceProxy)
