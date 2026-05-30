@@ -123,6 +123,11 @@ func runServe(cmd *cobra.Command, args []string) error {
 	// tracks which memory IDs have been injected per conversation (keyed by fnv of first user message)
 	var convInjectMu sync.Mutex
 	convInjected := map[uint64]map[string]bool{}
+	// Batch workloads (e.g. summarizing a whole corpus) send a unique first user
+	// message per request, so every call mints a new key. Without a cap this map
+	// grows once per request forever — unbounded RSS until OOM. Conversations are
+	// short-lived; dropping old keys at most re-injects a memory once, harmless.
+	const maxTrackedConvs = 1024
 
 	hub := events.NewHub()
 	mgr := process.New(bin, llamaBin, hub, inferencePort, serveBits, serveThreads, serveCtxSize, serveCPU, serveNoQuant, false)
@@ -671,6 +676,9 @@ func runServe(cmd *cobra.Command, args []string) error {
 						convInjectMu.Lock()
 						seen := convInjected[convKey]
 						if seen == nil {
+							if len(convInjected) >= maxTrackedConvs {
+								convInjected = map[uint64]map[string]bool{}
+							}
 							seen = map[string]bool{}
 							convInjected[convKey] = seen
 						}

@@ -185,6 +185,12 @@ func (m *Manager) Start(modelID string) error {
 				"--pooling", "mean", // e5 needs mean; 'none' returns per-token
 			}
 		} else {
+			// No --cache-reuse: it keeps and shifts KV prefixes between requests,
+			// and on models whose rope/arch doesn't cleanly support the shift,
+			// llama-server reallocates cache state per request — RSS climbs
+			// hundreds of MB per completion until OOM on a long batch run. The
+			// only shared prefix across distinct prompts is the system message,
+			// so the throughput it buys is negligible.
 			args = []string{
 				"--model", modelID,
 				"--port", fmt.Sprintf("%d", m.port),
@@ -193,7 +199,6 @@ func (m *Manager) Start(modelID string) error {
 				"--ctx-size", fmt.Sprintf("%d", m.ctxSize),
 				"--batch-size", "2048",
 				"--ubatch-size", "512",
-				"--cache-reuse", "256",
 				"--flash-attn", "auto",
 			}
 			if mmproj := hf.FindMMProjInDir(filepath.Dir(modelID)); mmproj != "" {
