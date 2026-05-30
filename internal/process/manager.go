@@ -34,13 +34,14 @@ type Manager struct {
 	ctxSize        int
 	cpuOnly        bool
 	noQuant        bool
+	embedding      bool // dedicated embedding server: minimal, leak-free llama-server flags
 	running        bool
 	loading        bool // true while downloading/starting, false once ready
 	intentional    bool // true when stop is deliberate (not a crash)
 	crashCount     int  // consecutive fast crashes (< 5s uptime)
 }
 
-func New(bin, llamaBin string, logOut io.Writer, port, bits, threads, ctxSize int, cpuOnly, noQuant bool) *Manager {
+func New(bin, llamaBin string, logOut io.Writer, port, bits, threads, ctxSize int, cpuOnly, noQuant, embedding bool) *Manager {
 	if logOut == nil {
 		logOut = os.Stdout
 	}
@@ -50,7 +51,7 @@ func New(bin, llamaBin string, logOut io.Writer, port, bits, threads, ctxSize in
 	if ctxSize <= 0 {
 		ctxSize = 4096
 	}
-	return &Manager{bin: bin, llamaBin: llamaBin, logOut: logOut, port: port, bits: bits, threads: threads, ctxSize: ctxSize, cpuOnly: cpuOnly, noQuant: noQuant}
+	return &Manager{bin: bin, llamaBin: llamaBin, logOut: logOut, port: port, bits: bits, threads: threads, ctxSize: ctxSize, cpuOnly: cpuOnly, noQuant: noQuant, embedding: embedding}
 }
 
 func threadStr(n int) string {
@@ -157,22 +158,48 @@ func (m *Manager) Start(modelID string) error {
 		}
 		bin = m.llamaBin
 		logPrefix = "[llama-server] "
-		args = []string{
-			"--model", modelID,
-			"--port", fmt.Sprintf("%d", m.port),
-			"--threads", threadStr(m.threads),
-			"--threads-batch", threadStr(m.threads),
-			"--ctx-size", fmt.Sprintf("%d", m.ctxSize),
-			"--batch-size", "2048",
-			"--ubatch-size", "512",
-			"--cache-reuse", "256",
-			"--flash-attn", "auto",
-			"--embeddings",
-			"--pooling", "mean",  // OAI-compatible embeddings (e5 needs mean; 'none' returns per-token)
-		}
-		if mmproj := hf.FindMMProjInDir(filepath.Dir(modelID)); mmproj != "" {
-			fmt.Fprintf(io.MultiWriter(os.Stdout, m.logOut), "Vision projector found: %s\n", filepath.Base(mmproj))
-			args = append(args, "--mmproj", mmproj)
+		if m.embedding {
+			// Dedicated embedding server (e5/bge/etc.). Deliberately NOT the chat
+			// flag set. Two things matter for memory:
+			//   * No --cache-reuse. Prefix-cache reuse is a generation optimization;
+			//     across thousands of distinct passages it never hits, but the slot
+			//     keeps retaining/scanning KV prefix state, and that bookkeeping
+			//     grows until OOM on a large corpus.
+			//   * --parallel 1 + --no-context-shift pin the KV cache to a single
+			//     fixed slot that is reset per request rather than shifted/grown.
+			// Non-causal mean pooling needs the whole sequence in one ubatch, so
+			// batch == ubatch == ctx (llama-server clamps these to the model's
+			// trained context, e.g. 512 for e5).
+			ctx := fmt.Sprintf("%d", m.ctxSize)
+			args = []string{
+				"--model", modelID,
+				"--port", fmt.Sprintf("%d", m.port),
+				"--threads", threadStr(m.threads),
+				"--threads-batch", threadStr(m.threads),
+				"--ctx-size", ctx,
+				"--batch-size", ctx,
+				"--ubatch-size", ctx,
+				"--parallel", "1",
+				"--no-context-shift",
+				"--embeddings",
+				"--pooling", "mean", // e5 needs mean; 'none' returns per-token
+			}
+		} else {
+			args = []string{
+				"--model", modelID,
+				"--port", fmt.Sprintf("%d", m.port),
+				"--threads", threadStr(m.threads),
+				"--threads-batch", threadStr(m.threads),
+				"--ctx-size", fmt.Sprintf("%d", m.ctxSize),
+				"--batch-size", "2048",
+				"--ubatch-size", "512",
+				"--cache-reuse", "256",
+				"--flash-attn", "auto",
+			}
+			if mmproj := hf.FindMMProjInDir(filepath.Dir(modelID)); mmproj != "" {
+				fmt.Fprintf(io.MultiWriter(os.Stdout, m.logOut), "Vision projector found: %s\n", filepath.Base(mmproj))
+				args = append(args, "--mmproj", mmproj)
+			}
 		}
 		if m.cpuOnly {
 			args = append(args, "--n-gpu-layers", "0")

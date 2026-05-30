@@ -125,8 +125,8 @@ func runServe(cmd *cobra.Command, args []string) error {
 	convInjected := map[uint64]map[string]bool{}
 
 	hub := events.NewHub()
-	mgr := process.New(bin, llamaBin, hub, inferencePort, serveBits, serveThreads, serveCtxSize, serveCPU, serveNoQuant)
-	idMgr := process.New(bin, llamaBin, hub, idPort, serveBits, serveThreads, 2048, serveCPU, serveNoQuant)
+	mgr := process.New(bin, llamaBin, hub, inferencePort, serveBits, serveThreads, serveCtxSize, serveCPU, serveNoQuant, false)
+	idMgr := process.New(bin, llamaBin, hub, idPort, serveBits, serveThreads, 2048, serveCPU, serveNoQuant, true)
 
 	if memDB != nil {
 		memDB.SetEmbedFunc(makeEmbedFunc(idPort, idMgr))
