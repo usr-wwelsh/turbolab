@@ -105,6 +105,24 @@ func CPUPercent() (float64, error) {
 	return 0, fmt.Errorf("cpu line not found in /proc/stat")
 }
 
+// ProcessRSS returns the resident set size (bytes) of a process by PID,
+// read from /proc/<pid>/statm (field 2 = resident pages).
+func ProcessRSS(pid int) (uint64, error) {
+	data, err := os.ReadFile(fmt.Sprintf("/proc/%d/statm", pid))
+	if err != nil {
+		return 0, err
+	}
+	fields := strings.Fields(string(data))
+	if len(fields) < 2 {
+		return 0, fmt.Errorf("unexpected statm format for pid %d", pid)
+	}
+	pages, err := strconv.ParseUint(fields[1], 10, 64)
+	if err != nil {
+		return 0, err
+	}
+	return pages * uint64(os.Getpagesize()), nil
+}
+
 // WillOOM returns true if loading a model of modelBytes would exhaust available RAM.
 func WillOOM(modelBytes uint64) (bool, error) {
 	stats, err := Get()

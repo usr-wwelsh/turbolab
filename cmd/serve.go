@@ -133,6 +133,16 @@ func runServe(cmd *cobra.Command, args []string) error {
 	mgr := process.New(bin, llamaBin, hub, inferencePort, serveBits, serveThreads, serveCtxSize, serveCPU, serveNoQuant, false)
 	idMgr := process.New(bin, llamaBin, hub, idPort, serveBits, serveThreads, 2048, serveCPU, serveNoQuant, true)
 
+	// Some backends (notably llama.cpp on certain model archs) leak memory across
+	// requests; recycle the child once its RSS crosses the configured ceiling so a
+	// long batch run can't OOM the host. Off by default.
+	if cfg.RecycleRSSMB > 0 {
+		limit := uint64(cfg.RecycleRSSMB) << 20
+		mgr.SetRecycleRSS(limit)
+		idMgr.SetRecycleRSS(limit)
+		fmt.Printf("Inference auto-recycle: restart child above %d MB RSS\n", cfg.RecycleRSSMB)
+	}
+
 	if memDB != nil {
 		memDB.SetEmbedFunc(makeEmbedFunc(idPort, idMgr))
 	}

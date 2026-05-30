@@ -20,6 +20,7 @@ type Config struct {
 	MemoryInject          bool    `json:"memory_inject"`
 	MemoryInjectMinScore  float32 `json:"memory_inject_min_score"`
 	IDModel               string  `json:"id_model"`
+	RecycleRSSMB          int     `json:"recycle_rss_mb"` // restart inference child past this RSS (0 = off)
 }
 
 const DefaultIDModel = "ggml-org/e5-small-v2-Q8_0-GGUF"

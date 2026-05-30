@@ -34,7 +34,8 @@ type Manager struct {
 	ctxSize        int
 	cpuOnly        bool
 	noQuant        bool
-	embedding      bool // dedicated embedding server: minimal, leak-free llama-server flags
+	embedding      bool   // dedicated embedding server: minimal, leak-free llama-server flags
+	recycleRSS     uint64 // restart the child when its RSS exceeds this many bytes (0 = never)
 	running        bool
 	loading        bool // true while downloading/starting, false once ready
 	intentional    bool // true when stop is deliberate (not a crash)
@@ -51,7 +52,52 @@ func New(bin, llamaBin string, logOut io.Writer, port, bits, threads, ctxSize in
 	if ctxSize <= 0 {
 		ctxSize = 4096
 	}
-	return &Manager{bin: bin, llamaBin: llamaBin, logOut: logOut, port: port, bits: bits, threads: threads, ctxSize: ctxSize, cpuOnly: cpuOnly, noQuant: noQuant, embedding: embedding}
+	m := &Manager{bin: bin, llamaBin: llamaBin, logOut: logOut, port: port, bits: bits, threads: threads, ctxSize: ctxSize, cpuOnly: cpuOnly, noQuant: noQuant, embedding: embedding}
+	go m.recycleWatcher()
+	return m
+}
+
+// SetRecycleRSS sets the resident-memory ceiling for the inference child. When
+// the backend (llama.cpp / turboquant) leaks across requests, RSS climbs until
+// OOM; once it crosses this limit the watcher transparently restarts it. Clients
+// that race the restart get a 502/connection error and retry. 0 disables.
+func (m *Manager) SetRecycleRSS(bytes uint64) {
+	m.mu.Lock()
+	m.recycleRSS = bytes
+	m.mu.Unlock()
+}
+
+// recycleWatcher polls the child's RSS and restarts it when it exceeds the
+// configured ceiling. Runs for the Manager's lifetime; no-ops while the limit
+// is 0 or no process is running.
+func (m *Manager) recycleWatcher() {
+	ticker := time.NewTicker(15 * time.Second)
+	defer ticker.Stop()
+	for range ticker.C {
+		m.mu.Lock()
+		threshold := m.recycleRSS
+		active := m.running && !m.loading && !m.intentional
+		pid := 0
+		if m.cmd != nil && m.cmd.Process != nil {
+			pid = m.cmd.Process.Pid
+		}
+		model := m.requestedModel
+		m.mu.Unlock()
+
+		if threshold == 0 || !active || pid == 0 || model == "" {
+			continue
+		}
+		rss, err := monitor.ProcessRSS(pid)
+		if err != nil || rss < threshold {
+			continue
+		}
+		lw := io.MultiWriter(os.Stdout, m.logOut)
+		fmt.Fprintf(lw, "[recycle] %s RSS %.1f GB exceeded limit %.1f GB — restarting inference server\n",
+			filepath.Base(model), float64(rss)/1e9, float64(threshold)/1e9)
+		if err := m.Start(model); err != nil {
+			fmt.Fprintf(lw, "[recycle] restart failed: %v\n", err)
+		}
+	}
 }
 
 func threadStr(n int) string {
