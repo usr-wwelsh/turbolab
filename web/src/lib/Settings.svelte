@@ -2,7 +2,7 @@
   import { onMount } from 'svelte'
   import { getConfig, saveConfig } from './api.js'
 
-  let cfg = { model: '', bits: 4, port: 7860, cpu_only: false, max_tokens: 2048, ctx_size: 2048 }
+  let cfg = { model: '', bits: 4, port: 7860, cpu_only: false, max_tokens: 2048, ctx_size: 2048, recycle_rss_mb: 0 }
   let saved = false
   let error = null
 
@@ -54,6 +54,12 @@
   <div class="field">
     <label for="ctx_size">Context size (tokens)</label>
     <input id="ctx_size" type="number" bind:value={cfg.ctx_size} min="512" max="131072" step="512" />
+  </div>
+
+  <div class="field">
+    <label for="recycle_rss_mb">Auto-recycle RSS limit (MB)</label>
+    <input id="recycle_rss_mb" type="number" bind:value={cfg.recycle_rss_mb} min="0" step="256" />
+    <span class="hint">Restart the inference server when its memory exceeds this. 0 disables.</span>
   </div>
 
   <div class="field row">
