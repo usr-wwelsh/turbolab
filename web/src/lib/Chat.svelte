@@ -20,6 +20,7 @@
   let fileInputEl
   let draggingOver = false
   let attachError = null
+  let fileModal = null
 
   $: userHistory = messages
     .filter(m => m.role === 'user')
@@ -37,6 +38,16 @@
     if (!Array.isArray(content)) return []
     return content.filter(p => p?.type === 'image_url').map(p => p.image_url?.url).filter(Boolean)
   }
+
+  // displayText shows the user's typed text only; attached docs are listed as
+  // pills instead of being dumped inline, even though the full blobs still go
+  // to the model via msg.content.
+  function displayText(msg) {
+    return msg.text !== undefined ? msg.text : msgText(msg.content)
+  }
+
+  function openFile(f) { fileModal = f }
+  function closeFile() { fileModal = null }
 
   function buildContent(text, atts) {
     const hasImages = atts.some(a => a.kind === 'image')
@@ -68,6 +79,11 @@
     if ((!input.trim() && attachments.length === 0) || streaming) return
     const content = buildContent(input, attachments)
     const userMsg = { role: 'user', content }
+    const docFiles = attachments.filter(a => a.kind === 'text').map(a => ({ name: a.name, text: a.text }))
+    if (docFiles.length > 0) {
+      userMsg.files = docFiles
+      userMsg.text = input
+    }
     messages = [...messages, userMsg]
     input = ''
     attachments = []
@@ -95,7 +111,7 @@
     }
 
     try {
-      await chatStream(messages.slice(0, -1), token => {
+      await chatStream(messages.slice(0, -1).map(m => ({ role: m.role, content: m.content })), token => {
         gotTokens = true
         assistantMsg.content += token
         messages = messages
@@ -339,7 +355,19 @@
               {/each}
             </div>
           {/if}
-          <pre class="content" class:error={msg.error}>{msgText(msg.content)}{#if msg.role === 'assistant' && streaming && msg === messages[messages.length - 1]}<span class="cursor">▋</span>{/if}</pre>
+          {#if msg.files?.length > 0}
+            <div class="file-row">
+              {#each msg.files as f}
+                <button class="file-pill" on:click={() => openFile(f)} title={f.name}>
+                  <span class="att-icon">📄</span>
+                  <span class="file-pill-name">{f.name}</span>
+                </button>
+              {/each}
+            </div>
+          {/if}
+          {#if displayText(msg) || (msg.role === 'assistant' && streaming && msg === messages[messages.length - 1])}
+            <pre class="content" class:error={msg.error}>{displayText(msg)}{#if msg.role === 'assistant' && streaming && msg === messages[messages.length - 1]}<span class="cursor">▋</span>{/if}</pre>
+          {/if}
           {#if msg.detail}
             <details class="error-detail">
               <summary>details</summary>
@@ -402,6 +430,20 @@
   {/if}
 </div>
 
+<svelte:window on:keydown={(e) => { if (fileModal && e.key === 'Escape') closeFile() }} />
+
+{#if fileModal}
+  <div class="file-modal-backdrop" on:click={(e) => { if (e.target === e.currentTarget) closeFile() }} role="presentation">
+    <div class="file-modal" role="dialog" aria-label={fileModal.name}>
+      <div class="file-modal-head">
+        <span class="file-modal-name" title={fileModal.name}>📄 {fileModal.name}</span>
+        <button class="file-modal-x" on:click={closeFile} title="close">×</button>
+      </div>
+      <pre class="file-modal-body">{fileModal.text}</pre>
+    </div>
+  </div>
+{/if}
+
 <style>
   .chat { display: flex; flex-direction: column; height: 100%; position: relative; }
   .chat.dragging { outline: 2px dashed var(--accent); outline-offset: -8px; }
@@ -438,6 +480,50 @@
   .att-img {
     max-width: 240px; max-height: 240px; border-radius: 4px;
     border: 1px solid var(--border-subtle);
+  }
+
+  .file-row { display: flex; gap: 0.4rem; flex-wrap: wrap; margin-bottom: 0.5rem; }
+  .file-pill {
+    display: flex; align-items: center; gap: 0.4rem;
+    padding: 0.25rem 0.6rem; background: var(--bg-card);
+    border: 1px solid var(--border-soft); border-radius: 999px;
+    font-family: monospace; font-size: 0.75rem; color: var(--fg-1);
+    cursor: pointer; align-self: auto; font-weight: normal;
+    max-width: 100%;
+  }
+  .file-pill:hover { border-color: var(--accent); color: var(--accent); }
+  .file-pill-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .file-modal-backdrop {
+    position: fixed; inset: 0; z-index: 50;
+    display: flex; align-items: center; justify-content: center;
+    background: color-mix(in srgb, var(--bg) 70%, transparent);
+    padding: 2rem;
+  }
+  .file-modal {
+    display: flex; flex-direction: column;
+    width: min(820px, 100%); max-height: 100%;
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: 8px; overflow: hidden;
+  }
+  .file-modal-head {
+    display: flex; align-items: center; gap: 0.5rem;
+    padding: 0.6rem 0.9rem; border-bottom: 1px solid var(--border-subtle);
+  }
+  .file-modal-name {
+    flex: 1; min-width: 0; font-family: monospace; font-size: 0.85rem;
+    color: var(--fg-1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .file-modal-x {
+    background: none; border: none; color: var(--fg-5);
+    cursor: pointer; font-size: 1.3rem; line-height: 1; padding: 0 0.2rem;
+    font-family: monospace; align-self: auto;
+  }
+  .file-modal-x:hover { color: var(--error); }
+  .file-modal-body {
+    margin: 0; padding: 1rem; overflow: auto;
+    font-family: monospace; font-size: 0.82rem; line-height: 1.5;
+    color: var(--fg-1); white-space: pre-wrap; word-break: break-word;
   }
 
   .att-bar {
