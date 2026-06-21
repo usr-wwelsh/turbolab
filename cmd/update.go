@@ -46,9 +46,18 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 	}
 	defer resp.Body.Close()
 
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return fmt.Errorf("failed to read release response: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("release server returned %s (try again shortly)", resp.Status)
+	}
+
 	var rel release
-	if err := json.NewDecoder(resp.Body).Decode(&rel); err != nil {
-		return fmt.Errorf("failed to parse release: %w", err)
+	if err := json.Unmarshal(body, &rel); err != nil {
+		return fmt.Errorf("unexpected response from release server (not JSON) — likely a transient GitHub error, try again shortly")
 	}
 
 	if rel.TagName == version {
