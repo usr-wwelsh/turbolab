@@ -4,3 +4,5 @@ web/node_modules/
 web/dist/*
 !web/dist/.gitkeep
 *.env
+minisign.key
+minisign.pub

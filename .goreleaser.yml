@@ -22,6 +22,12 @@ archives:
 checksum:
   name_template: "checksums.txt"
 
+signs:
+  - cmd: minisign
+    args: ["-S", "-s", "minisign.key", "-m", "${artifact}", "-x", "${signature}"]
+    signature: "${artifact}.minisig"
+    artifacts: checksum
+
 changelog:
   sort: asc
   filters:

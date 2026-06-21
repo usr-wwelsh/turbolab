@@ -30,6 +30,12 @@ jobs:
           npm ci
           npm run build
 
+      - name: Install minisign
+        run: sudo apt-get update && sudo apt-get install -y minisign
+
+      - name: Write signing key
+        run: printf '%s' "${{ secrets.MINISIGN_KEY }}" > minisign.key
+
       - uses: goreleaser/goreleaser-action@v6
         with:
           version: latest
