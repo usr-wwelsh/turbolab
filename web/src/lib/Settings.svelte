@@ -2,7 +2,7 @@
   import { onMount } from 'svelte'
   import { getConfig, saveConfig } from './api.js'
 
-  let cfg = { model: '', bits: 4, port: 7860, cpu_only: false, max_tokens: 2048, ctx_size: 2048, recycle_rss_mb: 0 }
+  let cfg = { model: '', bits: 4, port: 7860, cpu_only: false, max_tokens: 2048, ctx_size: 2048, recycle_rss_mb: 0, cot_prompt_enabled: false, self_consistency_n: 0, self_consistency_show_all: false }
   let saved = false
   let error = null
 
@@ -60,6 +60,23 @@
     <label for="recycle_rss_mb">Auto-recycle RSS limit (MB)</label>
     <input id="recycle_rss_mb" type="number" bind:value={cfg.recycle_rss_mb} min="0" step="256" />
     <span class="hint">Restart the inference server when its memory exceeds this. 0 disables.</span>
+  </div>
+
+  <div class="field row">
+    <label for="cot_prompt_enabled">Chain-of-thought prompting</label>
+    <input id="cot_prompt_enabled" type="checkbox" bind:checked={cfg.cot_prompt_enabled} />
+  </div>
+
+  <div class="field">
+    <label for="self_consistency_n">Self-consistency samples</label>
+    <input id="self_consistency_n" type="number" bind:value={cfg.self_consistency_n} min="0" step="1" />
+    <span class="hint">Fire N parallel completions and vote on the most common answer. 0 or 1 disables.</span>
+  </div>
+
+  <div class="field">
+    <label for="self_consistency_show_all">Show all self-consistency candidates</label>
+    <input id="self_consistency_show_all" type="checkbox" bind:checked={cfg.self_consistency_show_all} />
+    <span class="hint">Dev mode: attach every parallel sample and its vote count to the response, not just the winner.</span>
   </div>
 
   <div class="field row">

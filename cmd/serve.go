@@ -121,13 +121,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 	memInjectOn.Store(cfg.MemoryInject)
 
 	// tracks which memory IDs have been injected per conversation (keyed by fnv of first user message)
-	var convInjectMu sync.Mutex
-	convInjected := map[uint64]map[string]bool{}
-	// Batch workloads (e.g. summarizing a whole corpus) send a unique first user
-	// message per request, so every call mints a new key. Without a cap this map
-	// grows once per request forever — unbounded RSS until OOM. Conversations are
-	// short-lived; dropping old keys at most re-injects a memory once, harmless.
-	const maxTrackedConvs = 1024
+	convTracker := newConvTracker(1024)
 
 	hub := events.NewHub()
 	mgr := process.New(bin, llamaBin, hub, inferencePort, serveBits, serveThreads, serveCtxSize, serveCPU, serveNoQuant, false)
@@ -632,219 +626,20 @@ func runServe(cmd *cobra.Command, args []string) error {
 	backendURL := fmt.Sprintf("http://localhost:%d", inferencePort)
 	backendClient := &http.Client{Timeout: 10 * time.Minute}
 
-	mux.HandleFunc("/v1/chat/completions", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodPost {
-			body, err := io.ReadAll(r.Body)
-			if err != nil {
-				http.Error(w, "failed to read request body", http.StatusBadRequest)
-				return
-			}
-			var payload map[string]any
-			if err := json.Unmarshal(body, &payload); err == nil {
-				// Switch model if client requested a different one
-				if reqModel, _ := payload["model"].(string); reqModel != "" && reqModel != "default" && reqModel != mgr.Model() {
-					if err := mgr.Start(reqModel); err != nil {
-						http.Error(w, "failed to load model: "+err.Error(), http.StatusServiceUnavailable)
-						return
-					}
-				}
-				modified := false
-				if _, set := payload["max_tokens"]; !set {
-					cfg, _ := config.Load()
-					payload["max_tokens"] = cfg.MaxTokens
-					modified = true
-				}
-				if streaming, _ := payload["stream"].(bool); streaming {
-					if _, set := payload["stream_options"]; !set {
-						payload["stream_options"] = map[string]any{"include_usage": true}
-						modified = true
-					}
-				}
-				if memInjectOn.Load() && memDB != nil && idMgr.Running() {
-					var firstUserMsg, lastUserMsg string
-					if msgs, ok := payload["messages"].([]any); ok {
-						for _, m := range msgs {
-							msg, ok := m.(map[string]any)
-							if !ok {
-								continue
-							}
-							if role, _ := msg["role"].(string); role == "user" {
-								if content, _ := msg["content"].(string); content != "" {
-									if firstUserMsg == "" {
-										firstUserMsg = content
-									}
-									lastUserMsg = content
-								}
-							}
-						}
-					}
-					if lastUserMsg != "" && len(lastUserMsg) >= 20 {
-						h := fnv.New64a()
-						h.Write([]byte(firstUserMsg))
-						convKey := h.Sum64()
-
-						convInjectMu.Lock()
-						seen := convInjected[convKey]
-						if seen == nil {
-							if len(convInjected) >= maxTrackedConvs {
-								convInjected = map[uint64]map[string]bool{}
-							}
-							seen = map[string]bool{}
-							convInjected[convKey] = seen
-						}
-						convInjectMu.Unlock()
-
-						cfg, _ := config.Load()
-						minScore := cfg.MemoryInjectMinScore
-						if minScore <= 0 {
-							minScore = 0.6
-						}
-						scored, err := memDB.SemanticSearch(lastUserMsg, 2, minScore)
-						if err == nil {
-							var lines []string
-							convInjectMu.Lock()
-							for _, s := range scored {
-								if seen[s.ID] {
-									continue
-								}
-								c := s.Content
-								if len(c) > 400 {
-									c = c[:400] + "…"
-								}
-								lines = append(lines, "• "+c)
-								seen[s.ID] = true
-							}
-							convInjectMu.Unlock()
-							if len(lines) > 0 {
-								memCtx := "Relevant context from memory:\n" + strings.Join(lines, "\n")
-								if msgs, ok := payload["messages"].([]any); ok {
-									if len(msgs) > 0 {
-										if first, ok := msgs[0].(map[string]any); ok {
-											if role, _ := first["role"].(string); role == "system" {
-												if existing, ok := first["content"].(string); ok {
-													first["content"] = memCtx + "\n\n" + existing
-												} else {
-													first["content"] = memCtx
-												}
-											} else {
-												payload["messages"] = append([]any{map[string]any{"role": "system", "content": memCtx}}, msgs...)
-											}
-										}
-									} else {
-										payload["messages"] = []any{map[string]any{"role": "system", "content": memCtx}}
-									}
-								}
-								modified = true
-							}
-						}
-					}
-				}
-
-				// MCP tool injection + tool-call loop.
-				// Only inject when the client hasn't provided its own tools (client handles its own loop).
-				clientHasTools := false
-				if t, ok := payload["tools"]; ok && t != nil {
-					if ts, ok := t.([]any); ok && len(ts) > 0 {
-						clientHasTools = true
-					}
-				}
-				if mcpOn.Load() && memDB != nil && !clientHasTools {
-					payload["tools"] = mcpSrv.ToolDefs()
-					modified = true
-
-					originalStreaming, _ := payload["stream"].(bool)
-					payload["stream"] = false
-
-					var finalRespBody []byte
-					loopDone := false
-					const maxIter = 10
-					for i := 0; i < maxIter && !loopDone; i++ {
-						subBody, err := json.Marshal(payload)
-						if err != nil {
-							break
-						}
-						resp, err := backendClient.Post(backendURL+"/v1/chat/completions", "application/json", bytes.NewReader(subBody))
-						if err != nil {
-							// backend unavailable — restore stream and fall through to proxy
-							payload["stream"] = originalStreaming
-							break
-						}
-						respBody, _ := io.ReadAll(resp.Body)
-						resp.Body.Close()
-
-						var respData map[string]any
-						if json.Unmarshal(respBody, &respData) != nil {
-							finalRespBody = respBody
-							loopDone = true
-							break
-						}
-						choices, _ := respData["choices"].([]any)
-						if len(choices) == 0 {
-							finalRespBody = respBody
-							loopDone = true
-							break
-						}
-						choice, _ := choices[0].(map[string]any)
-						msg, _ := choice["message"].(map[string]any)
-						finishReason, _ := choice["finish_reason"].(string)
-
-						if finishReason != "tool_calls" {
-							finalRespBody = respBody
-							loopDone = true
-							break
-						}
-
-						// Append assistant message then execute each tool call
-						msgs, _ := payload["messages"].([]any)
-						msgs = append(msgs, msg)
-						toolCalls, _ := msg["tool_calls"].([]any)
-						for _, tc := range toolCalls {
-							tcMap, _ := tc.(map[string]any)
-							tcID, _ := tcMap["id"].(string)
-							fn, _ := tcMap["function"].(map[string]any)
-							name, _ := fn["name"].(string)
-							argsStr, _ := fn["arguments"].(string)
-							result, err := mcpSrv.CallTool(name, json.RawMessage(argsStr))
-							content := result
-							if err != nil {
-								content = "error: " + err.Error()
-							}
-							msgs = append(msgs, map[string]any{
-								"role":         "tool",
-								"tool_call_id": tcID,
-								"content":      content,
-							})
-						}
-						payload["messages"] = msgs
-					}
-
-					if loopDone && finalRespBody != nil {
-						if recordFn != nil {
-							proxy.RecordFromJSON(finalRespBody, recordFn)
-						}
-						if originalStreaming {
-							writeAsSSE(w, finalRespBody)
-						} else {
-							w.Header().Set("Content-Type", "application/json")
-							w.Write(finalRespBody)
-						}
-						return
-					}
-					// loop didn't complete (backend error) — fall through to proxy
-					payload["stream"] = originalStreaming
-				}
-
-				if modified {
-					if b, err := json.Marshal(payload); err == nil {
-						body = b
-					}
-				}
-			}
-			r.Body = io.NopCloser(bytes.NewReader(body))
-			r.ContentLength = int64(len(body))
-		}
-		inferenceProxy.ServeHTTP(w, r)
-	})
+	mux.HandleFunc("/v1/chat/completions", newChatCompletionsHandler(chatHandlerDeps{
+		mgr:            mgr,
+		idMgr:          idMgr,
+		backendURL:     backendURL,
+		backendClient:  backendClient,
+		inferenceProxy: inferenceProxy,
+		mcpOn:          mcpOn,
+		mcpSrv:         mcpSrv,
+		memDB:          memDB,
+		memInjectOn:    memInjectOn,
+		convTracker:    convTracker,
+		recordFn:       recordFn,
+		loadConfig:     config.Load,
+	}))
 
 	mux.HandleFunc("/v1/models", func(w http.ResponseWriter, r *http.Request) {
 		locals, _ := hf.LocalModels()
@@ -905,7 +700,359 @@ func runServe(cmd *cobra.Command, args []string) error {
 	return http.ListenAndServe(fmt.Sprintf(":%d", servePort), mux)
 }
 
-func writeAsSSE(w http.ResponseWriter, jsonBody []byte) {
+const cotInstruction = "Think step by step, then give your final answer."
+const selfConsistencyDefaultTemp = 0.7
+
+// convTracker tracks which memory IDs have already been injected per
+// conversation (keyed by fnv hash of the first user message). Batch
+// workloads mint a unique key per request, so without a cap this grows
+// forever; past maxSize entries the tracker resets, which at worst
+// re-injects a memory once — harmless.
+type convTracker struct {
+	mu      sync.Mutex
+	seen    map[uint64]map[string]bool
+	maxSize int
+}
+
+func newConvTracker(maxSize int) *convTracker {
+	return &convTracker{seen: map[uint64]map[string]bool{}, maxSize: maxSize}
+}
+
+// markNew returns the subset of ids not yet seen for this conversation key
+// and marks them seen.
+func (t *convTracker) markNew(key uint64, ids []string) []string {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	seen := t.seen[key]
+	if seen == nil {
+		if len(t.seen) >= t.maxSize {
+			t.seen = map[uint64]map[string]bool{}
+		}
+		seen = map[string]bool{}
+		t.seen[key] = seen
+	}
+	var newIDs []string
+	for _, id := range ids {
+		if seen[id] {
+			continue
+		}
+		seen[id] = true
+		newIDs = append(newIDs, id)
+	}
+	return newIDs
+}
+
+// injectSystemSuffix appends text to the request's system message, creating
+// one at the front of messages if none exists.
+func injectSystemSuffix(payload map[string]any, text string) {
+	msgs, ok := payload["messages"].([]any)
+	if !ok {
+		return
+	}
+	if len(msgs) == 0 {
+		payload["messages"] = []any{map[string]any{"role": "system", "content": text}}
+		return
+	}
+	if first, ok := msgs[0].(map[string]any); ok {
+		if role, _ := first["role"].(string); role == "system" {
+			if existing, ok := first["content"].(string); ok && existing != "" {
+				first["content"] = existing + "\n\n" + text
+			} else {
+				first["content"] = text
+			}
+			return
+		}
+	}
+	payload["messages"] = append([]any{map[string]any{"role": "system", "content": text}}, msgs...)
+}
+
+type chatHandlerDeps struct {
+	mgr            *process.Manager
+	idMgr          *process.Manager
+	backendURL     string
+	backendClient  *http.Client
+	inferenceProxy http.Handler
+	mcpOn          *atomic.Bool
+	mcpSrv         *mcp.Server
+	memDB          *memory.DB
+	memInjectOn    *atomic.Bool
+	convTracker    *convTracker
+	recordFn       proxy.RecordFunc
+	loadConfig     func() (config.Config, error)
+}
+
+func newChatCompletionsHandler(d chatHandlerDeps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			body, err := io.ReadAll(r.Body)
+			if err != nil {
+				http.Error(w, "failed to read request body", http.StatusBadRequest)
+				return
+			}
+			var payload map[string]any
+			if err := json.Unmarshal(body, &payload); err == nil {
+				cfg, _ := d.loadConfig()
+
+				// Switch model if client requested a different one
+				if reqModel, _ := payload["model"].(string); reqModel != "" && reqModel != "default" && reqModel != d.mgr.Model() {
+					if err := d.mgr.Start(reqModel); err != nil {
+						http.Error(w, "failed to load model: "+err.Error(), http.StatusServiceUnavailable)
+						return
+					}
+				}
+				modified := false
+				if _, set := payload["max_tokens"]; !set {
+					payload["max_tokens"] = cfg.MaxTokens
+					modified = true
+				}
+				if streaming, _ := payload["stream"].(bool); streaming {
+					if _, set := payload["stream_options"]; !set {
+						payload["stream_options"] = map[string]any{"include_usage": true}
+						modified = true
+					}
+				}
+
+				if cfg.CoTPromptEnabled {
+					injectSystemSuffix(payload, cotInstruction)
+					modified = true
+				}
+
+				if d.memInjectOn.Load() && d.memDB != nil && d.idMgr.Running() {
+					var firstUserMsg, lastUserMsg string
+					if msgs, ok := payload["messages"].([]any); ok {
+						for _, m := range msgs {
+							msg, ok := m.(map[string]any)
+							if !ok {
+								continue
+							}
+							if role, _ := msg["role"].(string); role == "user" {
+								if content, _ := msg["content"].(string); content != "" {
+									if firstUserMsg == "" {
+										firstUserMsg = content
+									}
+									lastUserMsg = content
+								}
+							}
+						}
+					}
+					if lastUserMsg != "" && len(lastUserMsg) >= 20 {
+						h := fnv.New64a()
+						h.Write([]byte(firstUserMsg))
+						convKey := h.Sum64()
+
+						minScore := cfg.MemoryInjectMinScore
+						if minScore <= 0 {
+							minScore = 0.6
+						}
+						scored, err := d.memDB.SemanticSearch(lastUserMsg, 2, minScore)
+						if err == nil {
+							ids := make([]string, len(scored))
+							byID := make(map[string]string, len(scored))
+							for i, s := range scored {
+								ids[i] = s.ID
+								byID[s.ID] = s.Content
+							}
+							newIDs := d.convTracker.markNew(convKey, ids)
+							var lines []string
+							for _, id := range newIDs {
+								c := byID[id]
+								if len(c) > 400 {
+									c = c[:400] + "…"
+								}
+								lines = append(lines, "• "+c)
+							}
+							if len(lines) > 0 {
+								memCtx := "Relevant context from memory:\n" + strings.Join(lines, "\n")
+								if msgs, ok := payload["messages"].([]any); ok {
+									if len(msgs) > 0 {
+										if first, ok := msgs[0].(map[string]any); ok {
+											if role, _ := first["role"].(string); role == "system" {
+												if existing, ok := first["content"].(string); ok {
+													first["content"] = memCtx + "\n\n" + existing
+												} else {
+													first["content"] = memCtx
+												}
+											} else {
+												payload["messages"] = append([]any{map[string]any{"role": "system", "content": memCtx}}, msgs...)
+											}
+										}
+									} else {
+										payload["messages"] = []any{map[string]any{"role": "system", "content": memCtx}}
+									}
+								}
+								modified = true
+							}
+						}
+					}
+				}
+
+				// MCP tool injection + tool-call loop.
+				// Only inject when the client hasn't provided its own tools (client handles its own loop).
+				clientHasTools := false
+				if t, ok := payload["tools"]; ok && t != nil {
+					if ts, ok := t.([]any); ok && len(ts) > 0 {
+						clientHasTools = true
+					}
+				}
+				if d.mcpOn.Load() && d.memDB != nil && !clientHasTools {
+					payload["tools"] = d.mcpSrv.ToolDefs()
+					modified = true
+
+					originalStreaming, _ := payload["stream"].(bool)
+					payload["stream"] = false
+
+					var finalRespBody []byte
+					loopDone := false
+					const maxIter = 10
+					for i := 0; i < maxIter && !loopDone; i++ {
+						subBody, err := json.Marshal(payload)
+						if err != nil {
+							break
+						}
+						resp, err := d.backendClient.Post(d.backendURL+"/v1/chat/completions", "application/json", bytes.NewReader(subBody))
+						if err != nil {
+							// backend unavailable — restore stream and fall through to proxy
+							payload["stream"] = originalStreaming
+							break
+						}
+						respBody, _ := io.ReadAll(resp.Body)
+						resp.Body.Close()
+
+						var respData map[string]any
+						if json.Unmarshal(respBody, &respData) != nil {
+							finalRespBody = respBody
+							loopDone = true
+							break
+						}
+						choices, _ := respData["choices"].([]any)
+						if len(choices) == 0 {
+							finalRespBody = respBody
+							loopDone = true
+							break
+						}
+						choice, _ := choices[0].(map[string]any)
+						msg, _ := choice["message"].(map[string]any)
+						finishReason, _ := choice["finish_reason"].(string)
+
+						if finishReason != "tool_calls" {
+							finalRespBody = respBody
+							loopDone = true
+							break
+						}
+
+						// Append assistant message then execute each tool call
+						msgs, _ := payload["messages"].([]any)
+						msgs = append(msgs, msg)
+						toolCalls, _ := msg["tool_calls"].([]any)
+						for _, tc := range toolCalls {
+							tcMap, _ := tc.(map[string]any)
+							tcID, _ := tcMap["id"].(string)
+							fn, _ := tcMap["function"].(map[string]any)
+							name, _ := fn["name"].(string)
+							argsStr, _ := fn["arguments"].(string)
+							result, err := d.mcpSrv.CallTool(name, json.RawMessage(argsStr))
+							content := result
+							if err != nil {
+								content = "error: " + err.Error()
+							}
+							msgs = append(msgs, map[string]any{
+								"role":         "tool",
+								"tool_call_id": tcID,
+								"content":      content,
+							})
+						}
+						payload["messages"] = msgs
+					}
+
+					if loopDone && finalRespBody != nil {
+						if d.recordFn != nil {
+							proxy.RecordFromJSON(finalRespBody, d.recordFn)
+						}
+						if originalStreaming {
+							writeAsSSE(w, finalRespBody, nil)
+						} else {
+							w.Header().Set("Content-Type", "application/json")
+							w.Write(finalRespBody)
+						}
+						return
+					}
+					// loop didn't complete (backend error) — fall through to proxy
+					payload["stream"] = originalStreaming
+				} else if cfg.SelfConsistencyN >= 2 && !clientHasTools {
+					// Fan out N parallel samples and vote on the most common answer.
+					// Never mutate the outer payload — on any failure we fall through
+					// to the raw proxy with the original, untouched request.
+					subPayload := make(map[string]any, len(payload)+1)
+					for k, v := range payload {
+						subPayload[k] = v
+					}
+					subPayload["stream"] = false
+					if t, set := subPayload["temperature"]; !set {
+						subPayload["temperature"] = selfConsistencyDefaultTemp
+					} else if tf, ok := t.(float64); ok && tf == 0 {
+						subPayload["temperature"] = selfConsistencyDefaultTemp
+					}
+
+					if subBody, err := json.Marshal(subPayload); err == nil {
+						var wg sync.WaitGroup
+						var mu sync.Mutex
+						var bodies [][]byte
+						wg.Add(cfg.SelfConsistencyN)
+						for i := 0; i < cfg.SelfConsistencyN; i++ {
+							go func() {
+								defer wg.Done()
+								resp, err := d.backendClient.Post(d.backendURL+"/v1/chat/completions", "application/json", bytes.NewReader(subBody))
+								if err != nil {
+									return
+								}
+								defer resp.Body.Close()
+								respBody, err := io.ReadAll(resp.Body)
+								if err != nil || resp.StatusCode != http.StatusOK {
+									return
+								}
+								mu.Lock()
+								bodies = append(bodies, respBody)
+								mu.Unlock()
+							}()
+						}
+						wg.Wait()
+
+						if winner, voteErr := selectByVote(bodies); voteErr == nil {
+							if d.recordFn != nil {
+								proxy.RecordFromJSON(winner, d.recordFn)
+							}
+							var candidates []selfConsistencyCandidate
+							if cfg.SelfConsistencyShowAll {
+								candidates = summarizeCandidates(bodies, winner)
+							}
+							originalStreaming, _ := payload["stream"].(bool)
+							if originalStreaming {
+								writeAsSSE(w, winner, candidates)
+							} else {
+								w.Header().Set("Content-Type", "application/json")
+								w.Write(attachCandidates(winner, candidates))
+							}
+							return
+						}
+					}
+					// marshal failure, or every sample errored, or no usable choices —
+					// fall through to proxy with the original payload.
+				}
+
+				if modified {
+					if b, err := json.Marshal(payload); err == nil {
+						body = b
+					}
+				}
+			}
+			r.Body = io.NopCloser(bytes.NewReader(body))
+			r.ContentLength = int64(len(body))
+		}
+		d.inferenceProxy.ServeHTTP(w, r)
+	}
+}
+
+func writeAsSSE(w http.ResponseWriter, jsonBody []byte, candidates []selfConsistencyCandidate) {
 	var resp struct {
 		ID      string `json:"id"`
 		Created int64  `json:"created"`
@@ -962,6 +1109,9 @@ func writeAsSSE(w http.ResponseWriter, jsonBody []byte) {
 	}
 	if resp.Usage != nil {
 		finalChunk["usage"] = resp.Usage
+	}
+	if len(candidates) > 0 {
+		finalChunk["self_consistency_candidates"] = candidates
 	}
 	if b, err := json.Marshal(finalChunk); err == nil {
 		fmt.Fprintf(w, "data: %s\n\n", b)

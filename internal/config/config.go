@@ -9,25 +9,28 @@ import (
 const DefaultModel = "bigatuna/Qwen3-0.6B-Sushi-Coder"
 
 type Config struct {
-	Model      string `json:"model"`
-	CPUOnly    bool   `json:"cpu_only"`
-	Bits       int    `json:"bits"`
-	Port       int    `json:"port"`
-	MaxTokens  int    `json:"max_tokens"`
-	Threads    int    `json:"threads"`
-	CtxSize    int    `json:"ctx_size"`
-	MCPEnabled            bool    `json:"mcp_enabled"`
-	MemoryInject          bool    `json:"memory_inject"`
-	MemoryInjectMinScore  float32 `json:"memory_inject_min_score"`
-	IDModel               string  `json:"id_model"`
-	RecycleRSSMB          int     `json:"recycle_rss_mb"` // restart inference child past this RSS (0 = off)
+	Model                  string  `json:"model"`
+	CPUOnly                bool    `json:"cpu_only"`
+	Bits                   int     `json:"bits"`
+	Port                   int     `json:"port"`
+	MaxTokens              int     `json:"max_tokens"`
+	Threads                int     `json:"threads"`
+	CtxSize                int     `json:"ctx_size"`
+	MCPEnabled             bool    `json:"mcp_enabled"`
+	MemoryInject           bool    `json:"memory_inject"`
+	MemoryInjectMinScore   float32 `json:"memory_inject_min_score"`
+	IDModel                string  `json:"id_model"`
+	RecycleRSSMB           int     `json:"recycle_rss_mb"` // restart inference child past this RSS (0 = off)
+	CoTPromptEnabled       bool    `json:"cot_prompt_enabled"`
+	SelfConsistencyN       int     `json:"self_consistency_n"`        // 0/1 = off, N>=2 fires N parallel samples and votes
+	SelfConsistencyShowAll bool    `json:"self_consistency_show_all"` // dev mode: attach every candidate + vote count to the response
 }
 
 const DefaultIDModel = "ggml-org/e5-small-v2-Q8_0-GGUF"
 
 func defaults() Config {
 	return Config{
-		Model:     DefaultModel,
+		Model:                DefaultModel,
 		CPUOnly:              true,
 		Bits:                 4,
 		Port:                 7860,

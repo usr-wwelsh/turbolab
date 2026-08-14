@@ -94,7 +94,7 @@
     onStreaming(true)
     abortCtrl = new AbortController()
 
-    const assistantMsg = { role: 'assistant', content: '', injected: null, injectedOpen: false }
+    const assistantMsg = { role: 'assistant', content: '', injected: null, injectedOpen: false, candidates: null, candidatesOpen: false }
     messages = [...messages, assistantMsg]
     scrollBottom()
 
@@ -116,7 +116,10 @@
         assistantMsg.content += token
         messages = messages
         scrollBottom()
-      }, abortCtrl.signal, model)
+      }, abortCtrl.signal, model, candidates => {
+        assistantMsg.candidates = candidates
+        messages = messages
+      })
       if (!gotTokens) {
         assistantMsg.content = 'No response — model returned empty stream (may have crashed)'
         assistantMsg.error = true
@@ -342,6 +345,23 @@
                     <div class="inject-item">
                       <span class="inject-id">{m.id.slice(0,8)}</span>
                       <span class="inject-content">{m.content.length > 200 ? m.content.slice(0, 200) + '…' : m.content}</span>
+                    </div>
+                  {/each}
+                </div>
+              {/if}
+            </div>
+          {/if}
+          {#if msg.candidates?.length > 0}
+            <div class="inject-badge">
+              <button class="inject-toggle" on:click={() => { msg.candidatesOpen = !msg.candidatesOpen; messages = messages }}>
+                🎲 {msg.candidates.length} candidate{msg.candidates.length === 1 ? '' : 's'} {msg.candidatesOpen ? '▾' : '▸'}
+              </button>
+              {#if msg.candidatesOpen}
+                <div class="inject-list">
+                  {#each msg.candidates as c}
+                    <div class="inject-item">
+                      <span class="inject-id">{c.chosen ? '✓' : ' '} {c.votes}×</span>
+                      <span class="inject-content">{c.content.length > 200 ? c.content.slice(0, 200) + '…' : c.content}</span>
                     </div>
                   {/each}
                 </div>
