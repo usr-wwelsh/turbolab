@@ -2,7 +2,7 @@
   import { onMount } from 'svelte'
   import { getConfig, saveConfig } from './api.js'
 
-  let cfg = { model: '', bits: 4, port: 7860, cpu_only: false, max_tokens: 2048, ctx_size: 2048, recycle_rss_mb: 0, cot_prompt_enabled: false, self_consistency_n: 0, self_consistency_show_all: false }
+  let cfg = { model: '', bits: 4, port: 7860, cpu_only: false, max_tokens: 2048, ctx_size: 2048, recycle_rss_mb: 0, system_prompt: '', cot_prompt_enabled: false, self_consistency_n: 0, self_consistency_show_all: false }
   let saved = false
   let error = null
 
@@ -30,6 +30,12 @@
   <div class="field">
     <label for="model">Default model</label>
     <input id="model" bind:value={cfg.model} placeholder="org/model-id" />
+  </div>
+
+  <div class="field">
+    <label for="system_prompt">Default system prompt</label>
+    <textarea id="system_prompt" bind:value={cfg.system_prompt} rows="3" placeholder="You are a helpful assistant."></textarea>
+    <span class="hint">Used when a request doesn't include its own system message. A client-supplied one always wins.</span>
   </div>
 
   <div class="field">
@@ -100,11 +106,12 @@
   .field { display: flex; flex-direction: column; gap: 0.25rem; }
   .field.row { flex-direction: row; align-items: center; gap: 0.5rem; }
   label { font-size: 0.8rem; color: var(--fg-3); }
-  input, select {
+  input, select, textarea {
     padding: 0.4rem 0.6rem; background: var(--bg-card);
     border: 1px solid var(--border); color: var(--fg);
     border-radius: 4px; font-family: monospace; font-size: 0.9rem;
   }
+  textarea { resize: vertical; }
   input[type="checkbox"] { width: 1rem; height: 1rem; padding: 0; }
   button {
     padding: 0.5rem 1.25rem; background: var(--accent); color: var(--accent-fg);

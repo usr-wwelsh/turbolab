@@ -766,6 +766,27 @@ func injectSystemSuffix(payload map[string]any, text string) {
 	payload["messages"] = append([]any{map[string]any{"role": "system", "content": text}}, msgs...)
 }
 
+// applyDefaultSystemPrompt sets the request's system message to prompt, but
+// only when the request has no system message of its own — an explicit
+// client-supplied system message always wins over the server default.
+func applyDefaultSystemPrompt(payload map[string]any, prompt string) {
+	if prompt == "" {
+		return
+	}
+	msgs, ok := payload["messages"].([]any)
+	if !ok {
+		return
+	}
+	if len(msgs) > 0 {
+		if first, ok := msgs[0].(map[string]any); ok {
+			if role, _ := first["role"].(string); role == "system" {
+				return
+			}
+		}
+	}
+	payload["messages"] = append([]any{map[string]any{"role": "system", "content": prompt}}, msgs...)
+}
+
 type chatHandlerDeps struct {
 	mgr            *process.Manager
 	idMgr          *process.Manager
@@ -810,6 +831,11 @@ func newChatCompletionsHandler(d chatHandlerDeps) http.HandlerFunc {
 						payload["stream_options"] = map[string]any{"include_usage": true}
 						modified = true
 					}
+				}
+
+				if cfg.SystemPrompt != "" {
+					applyDefaultSystemPrompt(payload, cfg.SystemPrompt)
+					modified = true
 				}
 
 				if cfg.CoTPromptEnabled {

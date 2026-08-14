@@ -310,6 +310,81 @@ func TestChatCompletions_SelfConsistency_ShowAllCandidates_Streaming(t *testing.
 	}
 }
 
+func TestChatCompletions_SystemPrompt_InjectsWhenAbsent(t *testing.T) {
+	var gotMessages []any
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		json.NewDecoder(r.Body).Decode(&body)
+		gotMessages, _ = body["messages"].([]any)
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"choices":[{"message":{"content":"ok"}}]}`))
+	}))
+	defer backend.Close()
+
+	deps := newPassthroughTestDeps(t, backend, config.Config{SystemPrompt: "You are a terse pirate."})
+	handler := newChatCompletionsHandler(deps)
+
+	doChatRequest(t, handler, `{"model":"default","messages":[{"role":"user","content":"hi"}]}`)
+
+	if len(gotMessages) != 2 {
+		t.Fatalf("expected system message injected + user message, got %d: %+v", len(gotMessages), gotMessages)
+	}
+	first, _ := gotMessages[0].(map[string]any)
+	if role, _ := first["role"].(string); role != "system" {
+		t.Fatalf("expected first message to be system, got %+v", first)
+	}
+	if content, _ := first["content"].(string); content != "You are a terse pirate." {
+		t.Fatalf("expected default system prompt, got %q", content)
+	}
+}
+
+func TestChatCompletions_SystemPrompt_RespectsClientSuppliedSystemMessage(t *testing.T) {
+	var gotMessages []any
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		json.NewDecoder(r.Body).Decode(&body)
+		gotMessages, _ = body["messages"].([]any)
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"choices":[{"message":{"content":"ok"}}]}`))
+	}))
+	defer backend.Close()
+
+	deps := newPassthroughTestDeps(t, backend, config.Config{SystemPrompt: "You are a terse pirate."})
+	handler := newChatCompletionsHandler(deps)
+
+	body := `{"model":"default","messages":[{"role":"system","content":"Client persona."},{"role":"user","content":"hi"}]}`
+	doChatRequest(t, handler, body)
+
+	if len(gotMessages) != 2 {
+		t.Fatalf("expected 2 messages (no extra system message injected), got %d: %+v", len(gotMessages), gotMessages)
+	}
+	first, _ := gotMessages[0].(map[string]any)
+	if content, _ := first["content"].(string); content != "Client persona." {
+		t.Fatalf("expected client's own system message to win, got %q", content)
+	}
+}
+
+func TestChatCompletions_SystemPrompt_EmptyNoInjection(t *testing.T) {
+	var gotMessages []any
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		json.NewDecoder(r.Body).Decode(&body)
+		gotMessages, _ = body["messages"].([]any)
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"choices":[{"message":{"content":"ok"}}]}`))
+	}))
+	defer backend.Close()
+
+	deps := newPassthroughTestDeps(t, backend, config.Config{})
+	handler := newChatCompletionsHandler(deps)
+
+	doChatRequest(t, handler, `{"model":"default","messages":[{"role":"user","content":"hi"}]}`)
+
+	if len(gotMessages) != 1 {
+		t.Fatalf("expected 1 message (no system message injected), got %d", len(gotMessages))
+	}
+}
+
 func TestChatCompletions_CoT_InjectsAndPrependsToExistingSystemMessage(t *testing.T) {
 	var gotMessages []any
 	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

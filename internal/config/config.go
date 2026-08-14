@@ -21,6 +21,7 @@ type Config struct {
 	MemoryInjectMinScore   float32 `json:"memory_inject_min_score"`
 	IDModel                string  `json:"id_model"`
 	RecycleRSSMB           int     `json:"recycle_rss_mb"` // restart inference child past this RSS (0 = off)
+	SystemPrompt           string  `json:"system_prompt"`  // default persona/instructions; only injected if the request has no system message
 	CoTPromptEnabled       bool    `json:"cot_prompt_enabled"`
 	SelfConsistencyN       int     `json:"self_consistency_n"`        // 0/1 = off, N>=2 fires N parallel samples and votes
 	SelfConsistencyShowAll bool    `json:"self_consistency_show_all"` // dev mode: attach every candidate + vote count to the response
