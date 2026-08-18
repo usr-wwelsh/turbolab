@@ -25,6 +25,16 @@ type Config struct {
 	CoTPromptEnabled       bool    `json:"cot_prompt_enabled"`
 	SelfConsistencyN       int     `json:"self_consistency_n"`        // 0/1 = off, N>=2 fires N parallel samples and votes
 	SelfConsistencyShowAll bool    `json:"self_consistency_show_all"` // dev mode: attach every candidate + vote count to the response
+
+	// Sampling defaults, applied only when the request doesn't set them itself.
+	// Pointers so "unset" (use backend default) is distinguishable from a
+	// meaningful zero value (e.g. temperature 0 = greedy decoding).
+	Temperature   *float64 `json:"temperature"`
+	TopP          *float64 `json:"top_p"`
+	TopK          *int     `json:"top_k"`
+	MinP          *float64 `json:"min_p"`
+	RepeatPenalty *float64 `json:"repeat_penalty"`
+	Seed          *int64   `json:"seed"`
 }
 
 const DefaultIDModel = "ggml-org/e5-small-v2-Q8_0-GGUF"

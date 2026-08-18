@@ -435,3 +435,84 @@ func TestChatCompletions_CoT_DisabledNoInjection(t *testing.T) {
 		t.Fatalf("expected 1 message (no system message injected), got %d", len(gotMessages))
 	}
 }
+
+func ptrF64(v float64) *float64 { return &v }
+func ptrInt(v int) *int         { return &v }
+func ptrI64(v int64) *int64     { return &v }
+
+func TestChatCompletions_SamplingDefaults_InjectedWhenAbsent(t *testing.T) {
+	var gotBody map[string]any
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewDecoder(r.Body).Decode(&gotBody)
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"choices":[{"message":{"content":"ok"}}]}`))
+	}))
+	defer backend.Close()
+
+	cfg := config.Config{
+		Temperature:   ptrF64(0.7),
+		TopP:          ptrF64(0.9),
+		TopK:          ptrInt(40),
+		MinP:          ptrF64(0.05),
+		RepeatPenalty: ptrF64(1.1),
+		Seed:          ptrI64(42),
+	}
+	deps := newPassthroughTestDeps(t, backend, cfg)
+	handler := newChatCompletionsHandler(deps)
+
+	doChatRequest(t, handler, `{"model":"default","messages":[{"role":"user","content":"hi"}]}`)
+
+	want := map[string]float64{"temperature": 0.7, "top_p": 0.9, "top_k": 40, "min_p": 0.05, "repeat_penalty": 1.1, "seed": 42}
+	for k, v := range want {
+		got, ok := gotBody[k].(float64)
+		if !ok {
+			t.Fatalf("expected backend to receive %q, got body %+v", k, gotBody)
+		}
+		if got != v {
+			t.Fatalf("expected %q = %v, got %v", k, v, got)
+		}
+	}
+}
+
+func TestChatCompletions_SamplingDefaults_ClientSuppliedWins(t *testing.T) {
+	var gotBody map[string]any
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewDecoder(r.Body).Decode(&gotBody)
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"choices":[{"message":{"content":"ok"}}]}`))
+	}))
+	defer backend.Close()
+
+	deps := newPassthroughTestDeps(t, backend, config.Config{Temperature: ptrF64(0.7), TopK: ptrInt(40)})
+	handler := newChatCompletionsHandler(deps)
+
+	doChatRequest(t, handler, `{"model":"default","messages":[{"role":"user","content":"hi"}],"temperature":0.2,"top_k":10}`)
+
+	if got := gotBody["temperature"]; got != 0.2 {
+		t.Fatalf("expected client's temperature to win, got %v", got)
+	}
+	if got := gotBody["top_k"]; got != float64(10) {
+		t.Fatalf("expected client's top_k to win, got %v", got)
+	}
+}
+
+func TestChatCompletions_SamplingDefaults_UnsetFieldsNotInjected(t *testing.T) {
+	var gotBody map[string]any
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewDecoder(r.Body).Decode(&gotBody)
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"choices":[{"message":{"content":"ok"}}]}`))
+	}))
+	defer backend.Close()
+
+	deps := newPassthroughTestDeps(t, backend, config.Config{})
+	handler := newChatCompletionsHandler(deps)
+
+	doChatRequest(t, handler, `{"model":"default","messages":[{"role":"user","content":"hi"}]}`)
+
+	for _, k := range []string{"temperature", "top_p", "top_k", "min_p", "repeat_penalty", "seed"} {
+		if _, ok := gotBody[k]; ok {
+			t.Fatalf("expected %q to be absent when unconfigured, got %+v", k, gotBody)
+		}
+	}
+}

@@ -826,6 +826,30 @@ func newChatCompletionsHandler(d chatHandlerDeps) http.HandlerFunc {
 					payload["max_tokens"] = cfg.MaxTokens
 					modified = true
 				}
+				if _, set := payload["temperature"]; !set && cfg.Temperature != nil {
+					payload["temperature"] = *cfg.Temperature
+					modified = true
+				}
+				if _, set := payload["top_p"]; !set && cfg.TopP != nil {
+					payload["top_p"] = *cfg.TopP
+					modified = true
+				}
+				if _, set := payload["top_k"]; !set && cfg.TopK != nil {
+					payload["top_k"] = *cfg.TopK
+					modified = true
+				}
+				if _, set := payload["min_p"]; !set && cfg.MinP != nil {
+					payload["min_p"] = *cfg.MinP
+					modified = true
+				}
+				if _, set := payload["repeat_penalty"]; !set && cfg.RepeatPenalty != nil {
+					payload["repeat_penalty"] = *cfg.RepeatPenalty
+					modified = true
+				}
+				if _, set := payload["seed"]; !set && cfg.Seed != nil {
+					payload["seed"] = *cfg.Seed
+					modified = true
+				}
 				if streaming, _ := payload["stream"].(bool); streaming {
 					if _, set := payload["stream_options"]; !set {
 						payload["stream_options"] = map[string]any{"include_usage": true}

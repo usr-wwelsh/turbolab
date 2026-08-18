@@ -2,7 +2,7 @@
   import { onMount } from 'svelte'
   import { getConfig, saveConfig } from './api.js'
 
-  let cfg = { model: '', bits: 4, port: 7860, cpu_only: false, max_tokens: 2048, ctx_size: 2048, recycle_rss_mb: 0, system_prompt: '', cot_prompt_enabled: false, self_consistency_n: 0, self_consistency_show_all: false }
+  let cfg = { model: '', bits: 4, port: 7860, cpu_only: false, max_tokens: 2048, ctx_size: 2048, recycle_rss_mb: 0, system_prompt: '', cot_prompt_enabled: false, self_consistency_n: 0, self_consistency_show_all: false, temperature: null, top_p: null, top_k: null, min_p: null, repeat_penalty: null, seed: null }
   let saved = false
   let error = null
 
@@ -83,6 +83,42 @@
     <label for="self_consistency_show_all">Show all self-consistency candidates</label>
     <input id="self_consistency_show_all" type="checkbox" bind:checked={cfg.self_consistency_show_all} />
     <span class="hint">Dev mode: attach every parallel sample and its vote count to the response, not just the winner.</span>
+  </div>
+
+  <div class="field">
+    <label for="temperature">Temperature</label>
+    <input id="temperature" type="number" bind:value={cfg.temperature} min="0" max="2" step="0.05" placeholder="backend default" />
+    <span class="hint">Sampling randomness. 0 is greedy/deterministic. Leave blank to use the backend's default.</span>
+  </div>
+
+  <div class="field">
+    <label for="top_p">Top-p</label>
+    <input id="top_p" type="number" bind:value={cfg.top_p} min="0" max="1" step="0.05" placeholder="backend default" />
+    <span class="hint">Nucleus sampling cutoff. Leave blank to use the backend's default.</span>
+  </div>
+
+  <div class="field">
+    <label for="top_k">Top-k</label>
+    <input id="top_k" type="number" bind:value={cfg.top_k} min="0" step="1" placeholder="backend default" />
+    <span class="hint">Restrict sampling to the k most likely tokens. Leave blank to use the backend's default.</span>
+  </div>
+
+  <div class="field">
+    <label for="min_p">Min-p</label>
+    <input id="min_p" type="number" bind:value={cfg.min_p} min="0" max="1" step="0.01" placeholder="backend default" />
+    <span class="hint">Keep tokens at least this fraction as likely as the top token. Leave blank to use the backend's default.</span>
+  </div>
+
+  <div class="field">
+    <label for="repeat_penalty">Repeat penalty</label>
+    <input id="repeat_penalty" type="number" bind:value={cfg.repeat_penalty} min="0" step="0.05" placeholder="backend default" />
+    <span class="hint">Penalize tokens already used, to curb loops/repetition. 1.0 = no penalty.</span>
+  </div>
+
+  <div class="field">
+    <label for="seed">Seed</label>
+    <input id="seed" type="number" bind:value={cfg.seed} step="1" placeholder="random" />
+    <span class="hint">Fixed RNG seed for reproducible output. Leave blank for random.</span>
   </div>
 
   <div class="field row">
