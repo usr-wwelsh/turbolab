@@ -187,12 +187,9 @@ func runServe(cmd *cobra.Command, args []string) error {
 			"id_model":         idMgr.Model(),
 			"id_model_running": idMgr.Running(),
 			"id_model_loading": idMgr.Loading(),
-			"ram_available_gb": func() float64 {
-				if stats != nil {
-					return stats.AvailableGB()
-				}
-				return 0
-			}(),
+		}
+		for k, v := range ramFields(stats) {
+			respMap[k] = v
 		}
 		if diskUsage != nil {
 			respMap["disk_used_gb"] = diskUsage.UsedGB

@@ -36,7 +36,7 @@
       <div class="meter" title="RAM">
         <span class="meter-label">RAM</span>
         <div class="bar">
-          <div class="fill ram" style="width: {Math.min(100, 100 - (status.ram_available_gb / 16) * 100)}%"></div>
+          <div class="fill ram" style="width: {Math.min(100, status.ram_used_percent ?? 0).toFixed(0)}%"></div>
         </div>
         <span class="meter-val"><span class="meter-val-full">{status.ram_available_gb?.toFixed(1)} GB free</span><span class="meter-val-short">{status.ram_available_gb?.toFixed(1)}G</span></span>
       </div>
