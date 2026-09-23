@@ -9,6 +9,7 @@
   import Memory from './lib/Memory.svelte'
   import { getStatus } from './lib/api.js'
   import { initTheme } from './lib/theme.js'
+  import { loadSessions, saveSessions } from './lib/sessions.js'
 
   let tab = 'chat'
   let status = null
@@ -17,11 +18,18 @@
   let showLogs = false
   let inferring = false
 
-  let sessions = [{ id: 1, name: 'Chat 1', messages: [] }]
-  let activeId = 1
-  let nextId = 2
+  function storage() {
+    try { return localStorage } catch { return { getItem: () => null, setItem() {} } }
+  }
 
-  $: activeSession = sessions.find(s => s.id === activeId)
+  let { sessions, activeId, nextId } = loadSessions(storage())
+
+  let saveTimer
+  $: {
+    const state = { sessions, activeId, nextId }
+    clearTimeout(saveTimer)
+    saveTimer = setTimeout(() => saveSessions(storage(), state), 500)
+  }
 
   async function refreshStatus() {
     try {
