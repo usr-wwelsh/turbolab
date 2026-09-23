@@ -210,7 +210,10 @@
 </div>
 
 <style>
-  .pane { padding: 1rem; display: flex; flex-direction: column; height: 100%; overflow-y: auto; gap: 0.5rem; }
+  .pane {
+    padding: 1rem; display: flex; flex-direction: column; height: 100%; overflow-y: auto; gap: 0.5rem;
+    width: 100%; max-width: var(--content-max); margin-inline: auto;
+  }
   .section-label { color: var(--fg-5); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; padding: 0.25rem 0; }
   .local-list { display: flex; flex-direction: column; gap: 0.25rem; margin-bottom: 0.5rem; }
   .local-row {

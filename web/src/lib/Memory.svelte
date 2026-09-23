@@ -572,7 +572,10 @@
 </div>
 
 <style>
-  .pane { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
+  .pane {
+    display: flex; flex-direction: column; height: 100%; overflow: hidden;
+    width: 100%; max-width: var(--content-max); margin-inline: auto;
+  }
 
   .mcp-bar {
     display: flex; align-items: center; gap: 0.5rem;

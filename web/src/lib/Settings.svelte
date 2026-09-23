@@ -136,6 +136,7 @@
   .pane {
     padding: 1rem; display: flex; flex-direction: column; gap: 0.75rem;
     max-width: 480px; height: 100%; overflow-y: auto;
+    width: 100%; margin-inline: auto;
   }
   .section-label { color: var(--fg-5); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; }
   .hint { color: var(--fg-5); font-size: 0.8rem; margin: 0; }

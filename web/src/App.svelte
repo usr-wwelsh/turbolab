@@ -142,6 +142,8 @@
 
 <style>
   :global(:root) {
+    --content-max: 920px;
+    --gutter: 1.2rem;
     --bg: #0d0d0d;
     --bg-elev: #111;
     --bg-card: #1a1a1a;
@@ -249,6 +251,7 @@
   .mobile-nav { display: none; }
   .tabs {
     display: flex; gap: 0; border-bottom: 1px solid var(--border-subtle);
+    padding-inline: max(0.3rem, calc((100% - var(--content-max)) / 2));
   }
   .tabs button {
     padding: 0.5rem 1.5rem; background: none; border: none;
@@ -259,6 +262,7 @@
   .session-bar {
     display: flex; align-items: center; gap: 2px;
     padding: 0.25rem 0.5rem; border-bottom: 1px solid var(--border-faint);
+    padding-inline: max(0.5rem, calc((100% - var(--content-max)) / 2));
     background: var(--bg-elev); overflow-x: auto;
   }
   .session-tab {

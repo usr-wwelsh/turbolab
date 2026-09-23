@@ -470,6 +470,7 @@
   .messages {
     flex: 1; overflow-y: auto; padding: 1rem;
     display: flex; flex-direction: column; gap: 1rem;
+    width: 100%; max-width: var(--content-max); margin-inline: auto;
   }
   .empty { color: var(--fg-6); font-family: monospace; text-align: center; margin-top: 4rem; }
   .msg { display: flex; gap: 0.75rem; }
@@ -490,6 +491,7 @@
   .generating {
     padding: 0.25rem 1rem; font-size: 0.75rem; color: var(--purple);
     border-top: 1px solid var(--border-faint); font-family: monospace;
+    width: 100%; max-width: var(--content-max); margin-inline: auto;
   }
   .dots span { animation: appear 1.2s infinite; opacity: 0; }
   .dots span:nth-child(2) { animation-delay: 0.4s; }
@@ -549,6 +551,7 @@
   .att-bar {
     display: flex; gap: 0.4rem; flex-wrap: wrap; align-items: center;
     padding: 0.5rem 1rem; border-top: 1px solid var(--border-faint);
+    width: 100%; max-width: var(--content-max); margin-inline: auto;
   }
   .att-chip {
     display: flex; align-items: center; gap: 0.4rem;
@@ -570,6 +573,7 @@
   .input-row {
     display: flex; gap: 0.5rem; padding: 1rem;
     border-top: 1px solid var(--border-subtle);
+    width: 100%; max-width: var(--content-max); margin-inline: auto;
   }
   .attach-btn {
     padding: 0 0.6rem; background: var(--bg-card); border: 1px solid var(--border);

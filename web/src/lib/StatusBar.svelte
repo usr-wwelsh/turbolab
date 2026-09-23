@@ -61,6 +61,7 @@
   .status-bar {
     display: flex; align-items: center; gap: 1.5rem;
     padding: 0.6rem 1.2rem; background: var(--bg-elev);
+    padding-inline: max(1.2rem, calc((100% - var(--content-max)) / 2));
     border-bottom: 1px solid var(--border-subtle); font-size: 0.85rem; font-family: monospace;
     flex-shrink: 0; flex-wrap: wrap;
     padding-top: max(0.6rem, env(safe-area-inset-top));
