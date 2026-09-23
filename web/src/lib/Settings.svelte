@@ -25,10 +25,10 @@
 
 <div class="pane">
   <div class="section-label">Settings</div>
-  <p class="hint">Changes take effect on next server restart.</p>
+  <p class="hint">Changes apply to the next request, except those marked <span class="restart">restart</span>, which apply on next server restart.</p>
 
   <div class="field">
-    <label for="model">Default model</label>
+    <label for="model">Default model <span class="restart">restart</span></label>
     <input id="model" bind:value={cfg.model} placeholder="org/model-id" />
   </div>
 
@@ -39,7 +39,7 @@
   </div>
 
   <div class="field">
-    <label for="bits">KV cache bits</label>
+    <label for="bits">KV cache bits <span class="restart">restart</span></label>
     <select id="bits" bind:value={cfg.bits}>
       <option value={2}>2-bit</option>
       <option value={4}>4-bit</option>
@@ -48,7 +48,7 @@
   </div>
 
   <div class="field">
-    <label for="port">Port</label>
+    <label for="port">Port <span class="restart">restart</span></label>
     <input id="port" type="number" bind:value={cfg.port} min="1024" max="65535" />
   </div>
 
@@ -58,12 +58,12 @@
   </div>
 
   <div class="field">
-    <label for="ctx_size">Context size (tokens)</label>
+    <label for="ctx_size">Context size (tokens) <span class="restart">restart</span></label>
     <input id="ctx_size" type="number" bind:value={cfg.ctx_size} min="512" max="131072" step="512" />
   </div>
 
   <div class="field">
-    <label for="recycle_rss_mb">Auto-recycle RSS limit (MB)</label>
+    <label for="recycle_rss_mb">Auto-recycle RSS limit (MB) <span class="restart">restart</span></label>
     <input id="recycle_rss_mb" type="number" bind:value={cfg.recycle_rss_mb} min="0" step="256" />
     <span class="hint">Restart the inference server when its memory exceeds this. 0 disables.</span>
   </div>
@@ -122,7 +122,7 @@
   </div>
 
   <div class="field row">
-    <label for="cpu_only">CPU only</label>
+    <label for="cpu_only">CPU only <span class="restart">restart</span></label>
     <input id="cpu_only" type="checkbox" bind:checked={cfg.cpu_only} />
   </div>
 
@@ -139,6 +139,10 @@
     width: 100%; margin-inline: auto;
   }
   .section-label { color: var(--fg-5); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; }
+  .restart {
+    font-size: 0.7rem; color: var(--warn); border: 1px solid var(--warn);
+    border-radius: 3px; padding: 0 0.3rem; margin-left: 0.3rem;
+  }
   .hint { color: var(--fg-5); font-size: 0.8rem; margin: 0; }
   .field { display: flex; flex-direction: column; gap: 0.25rem; }
   .field.row { flex-direction: row; align-items: center; gap: 0.5rem; }
