@@ -1,6 +1,7 @@
 <script>
   import { chatStream, semanticSearchMemories, convertFile } from './api.js'
   import { renderMarkdown } from './markdown.js'
+  import { msgText, msgImages, regenerateHistory, editHistory } from './chatActions.js'
 
   export let modelRunning = false
   export let model = ''
@@ -26,19 +27,6 @@
   $: userHistory = messages
     .filter(m => m.role === 'user')
     .map(m => msgText(m.content))
-
-  function msgText(content) {
-    if (typeof content === 'string') return content
-    if (Array.isArray(content)) {
-      return content.filter(p => p?.type === 'text').map(p => p.text).join('\n')
-    }
-    return ''
-  }
-
-  function msgImages(content) {
-    if (!Array.isArray(content)) return []
-    return content.filter(p => p?.type === 'image_url').map(p => p.image_url?.url).filter(Boolean)
-  }
 
   // displayText shows the user's typed text only; attached docs are listed as
   // pills instead of being dumped inline, even though the full blobs still go
@@ -109,17 +97,39 @@
   async function send() {
     if ((!input.trim() && attachments.length === 0) || streaming) return
     const content = buildContent(input, attachments)
-    const userMsg = { role: 'user', content }
+    const userMsg = { role: 'user', content, text: input }
     const docFiles = attachments.filter(a => a.kind === 'text').map(a => ({ name: a.name, text: a.text }))
-    if (docFiles.length > 0) {
-      userMsg.files = docFiles
-      userMsg.text = input
-    }
+    if (docFiles.length > 0) userMsg.files = docFiles
     messages = [...messages, userMsg]
     input = ''
     attachments = []
     historyIdx = -1
     savedDraft = ''
+    await respond()
+  }
+
+  async function regenerate() {
+    if (streaming) return
+    messages = regenerateHistory(messages)
+    if (messages.length > 0) await respond()
+  }
+
+  function edit(idx) {
+    if (streaming) return
+    const { history, draft } = editHistory(messages, idx)
+    messages = history
+    input = draft.text
+    attachments = draft.attachments
+    historyIdx = -1
+    textareaEl?.focus()
+  }
+
+  async function copyMessage(e, msg) {
+    flash(e.currentTarget, await copyText(displayText(msg)) ? 'copied' : 'failed')
+  }
+
+  async function respond() {
+    const userMsg = messages[messages.length - 1]
     streaming = true
     gotTokens = false
     onStreaming(true)
@@ -362,7 +372,7 @@
         {modelRunning ? 'Start chatting. Drop files or paste images.' : 'Load a model first.'}
       </div>
     {/if}
-    {#each messages as msg}
+    {#each messages as msg, i}
       <div class="msg {msg.role}">
         <span class="role">{msg.role === 'user' ? 'you' : 'ai'}</span>
         <div class="content-wrap">
@@ -429,6 +439,18 @@
               <summary>details</summary>
               <pre>{msg.detail}</pre>
             </details>
+          {/if}
+          {#if !(streaming && i >= messages.length - 2)}
+            <div class="msg-actions">
+              {#if displayText(msg)}
+                <button type="button" on:click={(e) => copyMessage(e, msg)}>copy</button>
+              {/if}
+              {#if msg.role === 'user'}
+                <button type="button" on:click={() => edit(i)}>edit</button>
+              {:else if i === messages.length - 1}
+                <button type="button" on:click={regenerate}>regenerate</button>
+              {/if}
+            </div>
           {/if}
         </div>
       </div>
@@ -547,6 +569,15 @@
   .md :global(.code-copy:hover) { color: var(--accent); border-color: var(--accent); }
   .cursor { animation: blink 1s step-end infinite; }
   @keyframes blink { 50% { opacity: 0; } }
+  .msg-actions { display: flex; gap: 0.25rem; margin-top: 0.3rem; opacity: 0; transition: opacity 0.1s; }
+  .msg:hover .msg-actions, .msg-actions:focus-within { opacity: 1; }
+  .msg-actions button {
+    padding: 0.05rem 0.4rem; font-family: monospace; font-size: 0.72rem;
+    background: none; color: var(--fg-4); border: 1px solid var(--border-faint);
+    border-radius: 3px; cursor: pointer;
+  }
+  .msg-actions button:hover { color: var(--accent); border-color: var(--accent); }
+  @media (hover: none) { .msg-actions { opacity: 1; } }
   .error-detail { margin-top: 0.4rem; }
   .error-detail summary { color: var(--fg-5); font-size: 0.8rem; cursor: pointer; }
   .error-detail pre { color: var(--fg-3); font-size: 0.78rem; margin: 0.25rem 0 0; white-space: pre-wrap; }
