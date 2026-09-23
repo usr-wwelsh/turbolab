@@ -1,5 +1,6 @@
 <script>
   import { chatStream, semanticSearchMemories, convertFile } from './api.js'
+  import { renderMarkdown } from './markdown.js'
 
   export let modelRunning = false
   export let model = ''
@@ -44,6 +45,36 @@
   // to the model via msg.content.
   function displayText(msg) {
     return msg.text !== undefined ? msg.text : msgText(msg.content)
+  }
+
+  async function copyText(text) {
+    try {
+      await navigator.clipboard.writeText(text)
+      return true
+    } catch {
+      const ta = document.createElement('textarea')
+      ta.value = text
+      ta.style.position = 'fixed'
+      ta.style.opacity = '0'
+      document.body.appendChild(ta)
+      ta.select()
+      const ok = document.execCommand('copy')
+      ta.remove()
+      return ok
+    }
+  }
+
+  function flash(btn, label) {
+    const prev = btn.textContent
+    btn.textContent = label
+    setTimeout(() => { btn.textContent = prev }, 1200)
+  }
+
+  async function onMessagesClick(e) {
+    const btn = e.target.closest?.('.code-copy')
+    if (!btn) return
+    const code = btn.parentElement.querySelector('code')?.textContent ?? ''
+    flash(btn, await copyText(code) ? 'copied' : 'failed')
   }
 
   function openFile(f) { fileModal = f }
@@ -324,7 +355,8 @@
   on:drop={onDrop}
   role="region"
 >
-  <div class="messages" bind:this={chatEl}>
+  <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
+  <div class="messages" bind:this={chatEl} on:click={onMessagesClick}>
     {#if messages.length === 0}
       <div class="empty">
         {modelRunning ? 'Start chatting. Drop files or paste images.' : 'Load a model first.'}
@@ -386,7 +418,11 @@
             </div>
           {/if}
           {#if displayText(msg) || (msg.role === 'assistant' && streaming && msg === messages[messages.length - 1])}
-            <pre class="content" class:error={msg.error}>{displayText(msg)}{#if msg.role === 'assistant' && streaming && msg === messages[messages.length - 1]}<span class="cursor">▋</span>{/if}</pre>
+            {#if msg.role === 'assistant' && !msg.error}
+              <div class="content md">{@html renderMarkdown(displayText(msg))}{#if streaming && msg === messages[messages.length - 1]}<span class="cursor">▋</span>{/if}</div>
+            {:else}
+              <pre class="content" class:error={msg.error}>{displayText(msg)}</pre>
+            {/if}
           {/if}
           {#if msg.detail}
             <details class="error-detail">
@@ -483,6 +519,32 @@
     color: var(--fg-1); white-space: pre-wrap; word-break: break-word;
   }
   .content.error { color: var(--error); }
+  .content.md { white-space: normal; line-height: 1.5; }
+  .md > :global(:first-child) { margin-top: 0; }
+  .md > :global(:last-child) { margin-bottom: 0; }
+  .md :global(p), .md :global(ul), .md :global(ol), .md :global(blockquote) { margin: 0 0 0.6rem; }
+  .md :global(ul), .md :global(ol) { padding-left: 1.4rem; }
+  .md :global(h1), .md :global(h2), .md :global(h3), .md :global(h4), .md :global(h5), .md :global(h6) {
+    margin: 0.9rem 0 0.4rem; font-size: 1rem; color: var(--fg);
+  }
+  .md :global(h1) { font-size: 1.15rem; }
+  .md :global(blockquote) { border-left: 2px solid var(--border); padding-left: 0.75rem; color: var(--fg-3); }
+  .md :global(hr) { border: none; border-top: 1px solid var(--border-subtle); margin: 0.8rem 0; }
+  .md :global(a) { color: var(--accent); }
+  .md :global(code) { background: var(--bg-card); border: 1px solid var(--border-faint); border-radius: 3px; padding: 0 0.25rem; font-size: 0.85em; }
+  .md :global(.codeblock) { position: relative; margin: 0 0 0.6rem; }
+  .md :global(.codeblock pre) {
+    margin: 0; padding: 0.6rem 0.75rem; overflow-x: auto;
+    background: var(--bg-deep); border: 1px solid var(--border-subtle); border-radius: 4px;
+  }
+  .md :global(.codeblock code) { background: none; border: none; padding: 0; font-size: 0.85rem; white-space: pre; }
+  .md :global(.code-copy) {
+    position: absolute; top: 0.3rem; right: 0.3rem;
+    padding: 0.1rem 0.45rem; font-family: monospace; font-size: 0.72rem;
+    background: var(--bg-card); color: var(--fg-4); border: 1px solid var(--border-subtle);
+    border-radius: 3px; cursor: pointer;
+  }
+  .md :global(.code-copy:hover) { color: var(--accent); border-color: var(--accent); }
   .cursor { animation: blink 1s step-end infinite; }
   @keyframes blink { 50% { opacity: 0; } }
   .error-detail { margin-top: 0.4rem; }
