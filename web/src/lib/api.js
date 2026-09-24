@@ -3,23 +3,33 @@ export async function getStatus() {
   return r.json()
 }
 
+async function jsonOrThrow(r) {
+  if (!r.ok) {
+    const text = (await r.text().catch(() => '')).trim()
+    let msg = text
+    try { msg = JSON.parse(text).error ?? text } catch {}
+    throw new Error(msg || `HTTP ${r.status}`)
+  }
+  return r.json()
+}
+
 export async function loadModel(model, bits) {
   const r = await fetch('/api/load', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ model, bits }),
   })
-  return r.json()
+  return jsonOrThrow(r)
 }
 
 export async function searchModels(query, limit = 20) {
   const r = await fetch(`/api/models/search?q=${encodeURIComponent(query)}&limit=${limit}`)
-  return r.json()
+  return jsonOrThrow(r)
 }
 
 export async function localModels() {
   const r = await fetch('/api/models/local')
-  return r.json()
+  return jsonOrThrow(r)
 }
 
 export async function deleteModel(model) {

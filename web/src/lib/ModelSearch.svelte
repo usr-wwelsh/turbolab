@@ -12,24 +12,38 @@
   let deletingModel = null
   let bits = 4
 
+  let error = null
+
   onMount(async () => {
-    local = await localModels()
+    try { local = await localModels() } catch (e) { error = `Couldn't list local models: ${e.message}` }
   })
 
   async function search() {
     if (!query.trim()) return
     searching = true
-    results = await searchModels(query)
-    searching = false
+    error = null
+    try {
+      results = await searchModels(query)
+    } catch (e) {
+      error = `Search failed: ${e.message}`
+    } finally {
+      searching = false
+    }
   }
 
   async function load(modelId) {
     loadingModel = modelId
     loadNote = null
-    const result = await loadModel(modelId, bits)
-    loadingModel = null
-    if (result.note) loadNote = result.note
-    onLoad(modelId)
+    error = null
+    try {
+      const result = await loadModel(modelId, bits)
+      if (result.note) loadNote = result.note
+      onLoad(modelId)
+    } catch (e) {
+      error = `Couldn't load ${modelId}: ${e.message}`
+    } finally {
+      loadingModel = null
+    }
   }
 
   async function deleteModelClick(modelId) {
@@ -139,6 +153,9 @@
   {#if loadNote}
     <div class="load-note">{loadNote}</div>
   {/if}
+  {#if error}
+    <div class="error-note">{error}</div>
+  {/if}
 
   <!-- Search -->
   <div class="section-label">Search HuggingFace</div>
@@ -231,6 +248,10 @@
   .load-note {
     padding: 0.4rem 0.75rem; background: var(--warn-bg); border: 1px solid var(--warn);
     border-radius: 4px; color: var(--warn); font-size: 0.8rem;
+  }
+  .error-note {
+    padding: 0.4rem 0.75rem; background: var(--error-bg); border: 1px solid var(--error-border);
+    border-radius: 4px; color: var(--error); font-size: 0.8rem;
   }
   .local-actions { display: flex; gap: 0.4rem; align-items: center; }
   .empty-local { color: var(--fg-6); font-size: 0.85rem; margin-bottom: 0.5rem; }
