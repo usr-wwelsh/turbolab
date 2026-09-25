@@ -1,3 +1,5 @@
+import { msgText } from './chatActions.js'
+
 const KEY = 'turbolab.sessions'
 const TRANSIENT = ['injectedOpen', 'candidatesOpen']
 
@@ -37,7 +39,7 @@ function cleanMessage(m, dropImages) {
 
 function serialize({ sessions, activeId, nextId }, dropImages) {
   return JSON.stringify({
-    sessions: sessions.map(s => ({ id: s.id, name: s.name, messages: s.messages.map(m => cleanMessage(m, dropImages)) })),
+    sessions: sessions.map(s => ({ id: s.id, name: s.name, ...(s.titled && { titled: true }), messages: s.messages.map(m => cleanMessage(m, dropImages)) })),
     activeId,
     nextId,
   })
@@ -50,4 +52,30 @@ export function saveSessions(storage, state) {
       return
     } catch {}
   }
+}
+
+const TITLE_MAX = 32
+
+function titleFrom(msg) {
+  const text = (msg.text ?? msgText(msg.content)).replace(/\s+/g, ' ').trim()
+  return text.length > TITLE_MAX ? text.slice(0, TITLE_MAX - 1) + '…' : text
+}
+
+export function autoTitle(sessions) {
+  let changed = false
+  const out = sessions.map(s => {
+    if (s.titled) return s
+    const first = s.messages.find(m => m.role === 'user')
+    const name = first && titleFrom(first)
+    if (!name) return s
+    changed = true
+    return { ...s, name, titled: true }
+  })
+  return changed ? out : sessions
+}
+
+export function renameSession(sessions, id, name) {
+  const trimmed = name.trim()
+  if (!trimmed) return sessions
+  return sessions.map(s => s.id === id ? { ...s, name: trimmed, titled: true } : s)
 }

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { loadSessions, saveSessions, defaultState } from './sessions.js'
+import { loadSessions, saveSessions, defaultState, autoTitle, renameSession } from './sessions.js'
 
 function memStorage(quota = Infinity) {
   const data = new Map()
@@ -76,5 +76,49 @@ describe('session persistence', () => {
     const broken = { getItem() { throw new Error('denied') }, setItem() { throw new Error('denied') } }
     expect(() => saveSessions(broken, state)).not.toThrow()
     expect(loadSessions(broken)).toEqual(defaultState())
+  })
+})
+
+const chat = (id, name, messages = [], extra = {}) => ({ id, name, messages, ...extra })
+const user = text => ({ role: 'user', content: text, text })
+
+describe('autoTitle', () => {
+  it('names an untitled session after its first message', () => {
+    const [s] = autoTitle([chat(1, 'Chat 1', [user('How do I   reverse\na list?')])])
+    expect(s).toMatchObject({ name: 'How do I reverse a list?', titled: true })
+  })
+
+  it('truncates long first messages', () => {
+    const [s] = autoTitle([chat(1, 'Chat 1', [user('a'.repeat(60))])])
+    expect(s.name).toBe('a'.repeat(31) + '…')
+  })
+
+  it('leaves titled sessions alone', () => {
+    const sessions = [chat(1, 'mine', [user('hello')], { titled: true })]
+    expect(autoTitle(sessions)).toBe(sessions)
+  })
+
+  it('waits for a message with text', () => {
+    const sessions = [chat(1, 'Chat 1', [{ role: 'user', content: [{ type: 'image_url', image_url: { url: 'x' } }], text: '' }])]
+    expect(autoTitle(sessions)).toBe(sessions)
+  })
+})
+
+describe('renameSession', () => {
+  it('renames and stops auto-titling', () => {
+    const [s] = renameSession([chat(1, 'Chat 1')], 1, '  notes ')
+    expect(s).toMatchObject({ name: 'notes', titled: true })
+  })
+
+  it('ignores a blank name', () => {
+    const sessions = [chat(1, 'Chat 1')]
+    expect(renameSession(sessions, 1, '   ')).toBe(sessions)
+  })
+
+  it('persists the titled flag', () => {
+    const s = memStorage()
+    const titledState = { sessions: [chat(1, 'notes', [], { titled: true })], activeId: 1, nextId: 2 }
+    saveSessions(s, titledState)
+    expect(loadSessions(s)).toEqual(titledState)
   })
 })

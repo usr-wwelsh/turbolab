@@ -9,7 +9,7 @@
   import Memory from './lib/Memory.svelte'
   import { getStatus } from './lib/api.js'
   import { initTheme } from './lib/theme.js'
-  import { loadSessions, saveSessions } from './lib/sessions.js'
+  import { loadSessions, saveSessions, autoTitle, renameSession } from './lib/sessions.js'
 
   let tab = 'chat'
   let status = null
@@ -23,6 +23,13 @@
   }
 
   let { sessions, activeId, nextId } = loadSessions(storage())
+
+  let editingId = null
+
+  $: {
+    const titled = autoTitle(sessions)
+    if (titled !== sessions) sessions = titled
+  }
 
   let saveTimer
   $: {
@@ -74,8 +81,25 @@
     sessions = sessions.map(s => s.id === activeId ? { ...s, messages: [] } : s)
   }
 
-  function switchSession(id) {
-    activeId = id
+  function onSessionClick(id) {
+    if (id === activeId) editingId = id
+    else activeId = id
+  }
+
+  function commitRename(e) {
+    if (editingId === null) return
+    sessions = renameSession(sessions, editingId, e.target.value)
+    editingId = null
+  }
+
+  function onRenameKey(e) {
+    if (e.key === 'Enter') commitRename(e)
+    else if (e.key === 'Escape') editingId = null
+  }
+
+  function focusSelect(el) {
+    el.focus()
+    el.select()
   }
 
   function closeSession(id) {
@@ -97,13 +121,17 @@
   </div>
   {#if tab === 'chat'}
     <div class="session-bar">
-      {#each sessions as s}
-        <button class="session-tab" class:active={s.id === activeId} on:click={() => switchSession(s.id)}>
-          {s.name}
-          {#if sessions.length > 1}
-            <button class="close" on:click|stopPropagation={() => closeSession(s.id)}>×</button>
+      {#each sessions as s (s.id)}
+        <div class="session-tab" class:active={s.id === activeId}>
+          {#if editingId === s.id}
+            <input class="session-rename" value={s.name} maxlength="64" aria-label="Chat name" use:focusSelect on:keydown={onRenameKey} on:blur={commitRename} />
+          {:else}
+            <button class="session-name" on:click={() => onSessionClick(s.id)} title={s.id === activeId ? 'Click to rename' : s.name}>{s.name}</button>
           {/if}
-        </button>
+          {#if sessions.length > 1}
+            <button class="close" aria-label="Close {s.name}" on:click={() => closeSession(s.id)}>×</button>
+          {/if}
+        </div>
       {/each}
       <button class="new-session" on:click={newSession} title="New chat">+</button>
       <button class="clear-session" on:click={clearSession} title="Clear context">clear</button>
@@ -274,12 +302,20 @@
     background: var(--bg-elev); overflow-x: auto;
   }
   .session-tab {
-    padding: 0.2rem 0.6rem; background: none; border: 1px solid var(--border);
-    color: var(--fg-5); cursor: pointer; font-family: monospace; font-size: 0.8rem;
+    padding: 0.2rem 0.6rem; border: 1px solid var(--border);
+    color: var(--fg-5); font-family: monospace; font-size: 0.8rem;
     border-radius: 3px; display: flex; align-items: center; gap: 0.3rem;
-    white-space: nowrap;
+    white-space: nowrap; flex-shrink: 0;
   }
   .session-tab.active { color: var(--accent); border-color: var(--accent); background: var(--bg-accent); }
+  .session-name {
+    background: none; border: none; padding: 0; color: inherit; cursor: pointer;
+    font: inherit; max-width: 16rem; overflow: hidden; text-overflow: ellipsis;
+  }
+  .session-rename {
+    width: 12rem; padding: 0; background: none; border: none; outline: none;
+    color: var(--fg); font: inherit;
+  }
   .session-tab .close {
     color: var(--fg-6); font-size: 0.9rem; line-height: 1; padding: 0 0.1rem;
     background: none; border: none; cursor: pointer; font-family: monospace;
