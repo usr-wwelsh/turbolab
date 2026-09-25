@@ -181,6 +181,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 			"model":            mgr.Model(),
 			"running":          mgr.Running(),
 			"loading":          mgr.Loading(),
+			"ctx_size":         serveCtxSize,
 			"cpu_percent":      cpu,
 			"mcp_enabled":      mcpOn.Load(),
 			"memory_inject":    memInjectOn.Load(),

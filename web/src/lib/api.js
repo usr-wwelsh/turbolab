@@ -145,7 +145,7 @@ export async function getUsage(days = 30) {
   return r.json()
 }
 
-export async function chatStream(messages, onToken, signal, model = 'default', onCandidates = () => {}) {
+export async function chatStream(messages, onToken, signal, model = 'default', onCandidates = () => {}, onUsage = () => {}) {
   const r = await fetch('/v1/chat/completions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -164,6 +164,7 @@ export async function chatStream(messages, onToken, signal, model = 'default', o
     const content = data.choices?.[0]?.message?.content
     if (content) onToken(content)
     if (data.self_consistency_candidates) onCandidates(data.self_consistency_candidates)
+    if (data.usage) onUsage(data.usage)
     return
   }
   const reader = r.body.getReader()
@@ -184,6 +185,7 @@ export async function chatStream(messages, onToken, signal, model = 'default', o
         const token = chunk.choices?.[0]?.delta?.content
         if (token) onToken(token)
         if (chunk.self_consistency_candidates) onCandidates(chunk.self_consistency_candidates)
+        if (chunk.usage) onUsage(chunk.usage)
       } catch {}
     }
   }

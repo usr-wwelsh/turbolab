@@ -144,7 +144,7 @@
     {#if tab === 'chat'}
       {#each sessions as s (s.id)}
         <div style="height:100%;display:{s.id===activeId?'flex':'none'};flex-direction:column;">
-          <Chat modelRunning={status?.running ?? false} model={status?.model ?? ''} memInject={status?.memory_inject ?? false} bind:messages={s.messages} sessionId={s.id} onStreaming={(v) => inferring = v} />
+          <Chat modelRunning={status?.running ?? false} model={status?.model ?? ''} memInject={status?.memory_inject ?? false} ctxSize={status?.ctx_size ?? 0} bind:messages={s.messages} sessionId={s.id} onStreaming={(v) => inferring = v} />
         </div>
       {/each}
     {:else if tab === 'models'}

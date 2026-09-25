@@ -4,10 +4,12 @@
   import { renderMarkdown } from './markdown.js'
   import { msgText, msgImages, regenerateHistory, editHistory } from './chatActions.js'
   import { nearBottom } from './scroll.js'
+  import { formatStats } from './stats.js'
 
   export let modelRunning = false
   export let model = ''
   export let memInject = false
+  export let ctxSize = 0
   export let messages = []
   export const sessionId = 0
   export let onStreaming = (_) => {}
@@ -154,17 +156,29 @@
       }).catch(() => {})
     }
 
+    let deltas = 0
+    let firstAt = null
+    let usage = null
     try {
       await chatStream(messages.slice(0, -1).map(m => ({ role: m.role, content: m.content })), token => {
         gotTokens = true
+        deltas++
+        firstAt ??= performance.now()
         assistantMsg.content += token
         messages = messages
         scrollBottom()
       }, abortCtrl.signal, model, candidates => {
         assistantMsg.candidates = candidates
         messages = messages
-      })
-      if (!gotTokens) {
+      }, u => { usage = u })
+      if (gotTokens) {
+        assistantMsg.stats = {
+          prompt: usage?.prompt_tokens ?? null,
+          completion: usage?.completion_tokens || deltas,
+          ms: performance.now() - firstAt,
+        }
+        messages = messages
+      } else {
         assistantMsg.content = 'No response — model returned empty stream (may have crashed)'
         assistantMsg.error = true
         messages = messages
@@ -450,6 +464,10 @@
               <pre>{msg.detail}</pre>
             </details>
           {/if}
+          {#if msg.stats}
+            {@const st = formatStats(msg.stats, ctxSize)}
+            <div class="msg-stats" class:warn={st.warn} title={st.warn ? 'Context nearly full — older messages may be truncated. Start a new chat or clear.' : ''}>{st.text}</div>
+          {/if}
           {#if !(streaming && i >= messages.length - 2)}
             <div class="msg-actions">
               {#if displayText(msg)}
@@ -590,6 +608,8 @@
   .md :global(.code-copy:hover) { color: var(--accent); border-color: var(--accent); }
   .cursor { animation: blink 1s step-end infinite; }
   @keyframes blink { 50% { opacity: 0; } }
+  .msg-stats { margin-top: 0.3rem; font-size: 0.7rem; color: var(--fg-5); font-family: monospace; }
+  .msg-stats.warn { color: var(--warn); }
   .msg-actions { display: flex; gap: 0.25rem; margin-top: 0.3rem; opacity: 0; transition: opacity 0.1s; }
   .msg:hover .msg-actions, .msg-actions:focus-within { opacity: 1; }
   .msg-actions button {

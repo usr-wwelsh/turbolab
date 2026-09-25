@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { searchModels, loadModel, localModels } from './api.js'
+import { searchModels, loadModel, localModels, chatStream } from './api.js'
 
 function respond(status, body, headers = { 'content-type': 'application/json' }) {
   vi.stubGlobal('fetch', vi.fn(async () => new Response(body, { status, headers })))
@@ -26,5 +26,20 @@ describe('model API errors', () => {
   it('load resolves with the server reply on success', async () => {
     respond(202, JSON.stringify({ status: 'loading' }))
     await expect(loadModel('org/model', 4)).resolves.toEqual({ status: 'loading' })
+  })
+})
+
+describe('chatStream usage', () => {
+  it('reports token usage from the final stream chunk', async () => {
+    const sse = [
+      'data: {"choices":[{"delta":{"content":"hi"}}]}',
+      'data: {"choices":[],"usage":{"prompt_tokens":12,"completion_tokens":3}}',
+      'data: [DONE]',
+      '',
+    ].join('\n')
+    respond(200, sse, { 'content-type': 'text/event-stream' })
+    const onUsage = vi.fn()
+    await chatStream([], () => {}, undefined, 'm', () => {}, onUsage)
+    expect(onUsage).toHaveBeenCalledWith({ prompt_tokens: 12, completion_tokens: 3 })
   })
 })
