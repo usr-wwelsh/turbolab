@@ -1,7 +1,9 @@
 <script>
+  import { tick } from 'svelte'
   import { chatStream, semanticSearchMemories, convertFile } from './api.js'
   import { renderMarkdown } from './markdown.js'
   import { msgText, msgImages, regenerateHistory, editHistory } from './chatActions.js'
+  import { nearBottom } from './scroll.js'
 
   export let modelRunning = false
   export let model = ''
@@ -23,6 +25,7 @@
   let draggingOver = false
   let attachError = null
   let fileModal = null
+  let stuck = true
 
   $: userHistory = messages
     .filter(m => m.role === 'user')
@@ -137,7 +140,7 @@
 
     const assistantMsg = { role: 'assistant', content: '', injected: null, injectedOpen: false, candidates: null, candidatesOpen: false }
     messages = [...messages, assistantMsg]
-    scrollBottom()
+    scrollBottom(true)
 
     if (memInject) {
       const shownIds = new Set(messages.flatMap(m => m.injected?.map(i => i.id) ?? []))
@@ -216,8 +219,14 @@
     abortCtrl?.abort()
   }
 
-  function scrollBottom() {
-    chatEl?.scrollTo({ top: chatEl.scrollHeight, behavior: 'smooth' })
+  function scrollBottom(force = false) {
+    if (!chatEl || (!force && !stuck)) return
+    stuck = true
+    tick().then(() => { chatEl.scrollTop = chatEl.scrollHeight })
+  }
+
+  function onScroll() {
+    stuck = nearBottom(chatEl)
   }
 
   function readImage(file) {
@@ -366,7 +375,8 @@
   role="region"
 >
   <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
-  <div class="messages" bind:this={chatEl} on:click={onMessagesClick}>
+  <div class="messages-wrap">
+  <div class="messages" bind:this={chatEl} on:click={onMessagesClick} on:scroll={onScroll}>
     {#if messages.length === 0}
       <div class="empty">
         {modelRunning ? 'Start chatting. Drop files or paste images.' : 'Load a model first.'}
@@ -456,6 +466,10 @@
       </div>
     {/each}
   </div>
+  {#if !stuck}
+    <button class="jump-btn" on:click={() => scrollBottom(true)} title="Jump to latest">↓{streaming ? ' new' : ''}</button>
+  {/if}
+  </div>
   {#if streaming}
     <div class="generating">generating<span class="dots"><span>.</span><span>.</span><span>.</span></span></div>
   {/if}
@@ -525,6 +539,13 @@
 <style>
   .chat { display: flex; flex-direction: column; height: 100%; position: relative; }
   .chat.dragging { outline: 2px dashed var(--accent); outline-offset: -8px; }
+  .messages-wrap { flex: 1; min-height: 0; position: relative; display: flex; flex-direction: column; }
+  .jump-btn {
+    position: absolute; bottom: 0.6rem; left: 50%; transform: translateX(-50%);
+    padding: 0.25rem 0.8rem; border-radius: 999px; align-self: auto;
+    background: var(--bg-card); color: var(--accent); border: 1px solid var(--accent);
+    font-family: monospace; font-size: 0.8rem; font-weight: normal;
+  }
   .messages {
     flex: 1; overflow-y: auto; padding: 1rem;
     display: flex; flex-direction: column; gap: 1rem;
