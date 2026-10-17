@@ -23,6 +23,12 @@ var setupCmd = &cobra.Command{
 	RunE:  runSetup,
 }
 
+var updateLlama bool
+
+func init() {
+	setupCmd.Flags().BoolVar(&updateLlama, "update-llama", false, "reinstall the latest llama-server in place")
+}
+
 func runSetup(cmd *cobra.Command, args []string) error {
 	venvDir, err := venvPath()
 	if err != nil {
@@ -51,7 +57,7 @@ func runSetup(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("pip install failed: %w", err)
 	}
 
-	if llamaServerBin() != "" {
+	if llamaServerBin() != "" && !updateLlama {
 		fmt.Println("llama-server found — GGUF models supported.")
 	} else {
 		fmt.Println("llama-server not found.")
@@ -69,6 +75,17 @@ func runSetup(cmd *cobra.Command, args []string) error {
 
 	fmt.Println("Setup complete. Run: turbolab serve --model <model-id>")
 	return nil
+}
+
+func llamaInstallDir(existingBin, home string) (string, error) {
+	if existingBin == "" {
+		return filepath.Join(home, ".local", "lib", "llama-cpp"), nil
+	}
+	real, err := filepath.EvalSymlinks(existingBin)
+	if err != nil {
+		return "", fmt.Errorf("resolve %s: %w", existingBin, err)
+	}
+	return filepath.Dir(real), nil
 }
 
 func pickLlamaAsset(releases []release) (url, name string, err error) {
@@ -121,7 +138,11 @@ func installLlamaServer() error {
 	if err != nil {
 		return fmt.Errorf("homedir: %w", err)
 	}
-	installDir := filepath.Join(home, ".local", "lib", "llama-cpp")
+	existing := llamaServerBin()
+	installDir, err := llamaInstallDir(existing, home)
+	if err != nil {
+		return err
+	}
 	if err := os.MkdirAll(installDir, 0755); err != nil {
 		return fmt.Errorf("mkdir %s: %w", installDir, err)
 	}
@@ -170,6 +191,10 @@ func installLlamaServer() error {
 	}
 	if !installed {
 		return fmt.Errorf("llama-server binary not found in tar.gz")
+	}
+
+	if existing != "" {
+		return nil
 	}
 
 	// Symlink binary into ~/.local/bin (already in PATH for most users)

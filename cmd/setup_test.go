@@ -1,6 +1,10 @@
 package cmd
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
 
 func TestPickLlamaAsset_SkipsReleasesWithoutUbuntuBinary(t *testing.T) {
 	releases := []release{
@@ -25,5 +29,42 @@ func TestPickLlamaAsset_SkipsReleasesWithoutUbuntuBinary(t *testing.T) {
 func TestPickLlamaAsset_ErrorsWhenNothingMatches(t *testing.T) {
 	if _, _, err := pickLlamaAsset([]release{{TagName: "v0.7.0"}}); err == nil {
 		t.Error("want error")
+	}
+}
+
+func TestLlamaInstallDir_FollowsExistingSymlink(t *testing.T) {
+	root := t.TempDir()
+	libDir := filepath.Join(root, "lib", "llama-cpp")
+	binDir := filepath.Join(root, "bin")
+	for _, d := range []string{libDir, binDir} {
+		if err := os.MkdirAll(d, 0755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	real := filepath.Join(libDir, "llama-server")
+	if err := os.WriteFile(real, nil, 0755); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(binDir, "llama-server")
+	if err := os.Symlink(real, link); err != nil {
+		t.Fatal(err)
+	}
+	got, err := llamaInstallDir(link, "/home/u")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, _ := filepath.EvalSymlinks(libDir)
+	if got != want {
+		t.Errorf("got %s, want %s", got, want)
+	}
+}
+
+func TestLlamaInstallDir_DefaultsUnderHomeWhenNotInstalled(t *testing.T) {
+	got, err := llamaInstallDir("", "/home/u")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "/home/u/.local/lib/llama-cpp" {
+		t.Errorf("got %s", got)
 	}
 }
