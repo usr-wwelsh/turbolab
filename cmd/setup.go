@@ -71,38 +71,37 @@ func runSetup(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
+func pickLlamaAsset(releases []release) (url, name string, err error) {
+	for _, r := range releases {
+		for _, a := range r.Assets {
+			if strings.Contains(a.Name, "bin-ubuntu-x64") && strings.HasSuffix(a.Name, ".tar.gz") {
+				return a.BrowserDownloadURL, a.Name, nil
+			}
+		}
+	}
+	return "", "", fmt.Errorf("no ubuntu-x64 asset found in recent llama.cpp releases")
+}
+
 func installLlamaServer() error {
 	if runtime.GOOS != "linux" || runtime.GOARCH != "amd64" {
 		return fmt.Errorf("auto-install only supported on linux/amd64")
 	}
 
 	fmt.Println("Fetching latest llama.cpp release...")
-	resp, err := http.Get("https://api.github.com/repos/ggerganov/llama.cpp/releases/latest")
+	resp, err := http.Get("https://api.github.com/repos/ggml-org/llama.cpp/releases?per_page=10")
 	if err != nil {
 		return fmt.Errorf("GitHub API: %w", err)
 	}
 	defer resp.Body.Close()
 
-	var release struct {
-		Assets []struct {
-			Name               string `json:"name"`
-			BrowserDownloadURL string `json:"browser_download_url"`
-		} `json:"assets"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
-		return fmt.Errorf("parse release: %w", err)
+	var releases []release
+	if err := json.NewDecoder(resp.Body).Decode(&releases); err != nil {
+		return fmt.Errorf("parse releases: %w", err)
 	}
 
-	var assetURL, assetName string
-	for _, a := range release.Assets {
-		if strings.Contains(a.Name, "ubuntu-x64") && strings.HasSuffix(a.Name, ".tar.gz") {
-			assetURL = a.BrowserDownloadURL
-			assetName = a.Name
-			break
-		}
-	}
-	if assetURL == "" {
-		return fmt.Errorf("no ubuntu-x64 asset found in latest release")
+	assetURL, assetName, err := pickLlamaAsset(releases)
+	if err != nil {
+		return err
 	}
 
 	fmt.Printf("Downloading %s...\n", assetName)
