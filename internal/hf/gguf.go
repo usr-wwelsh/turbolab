@@ -141,7 +141,7 @@ func SelectMMProj(files []ModelFile) string {
 		case strings.Contains(upper, "Q4"):
 			rank = 7
 		}
-		if rank < bestRank {
+		if rank < bestRank || (rank == bestRank && len(f.Filename) < len(best)) {
 			bestRank = rank
 			best = f.Filename
 		}
@@ -157,16 +157,20 @@ func FindMMProjInDir(dir string) string {
 	if err != nil {
 		return ""
 	}
+	best := ""
 	for _, e := range entries {
 		if e.IsDir() {
 			continue
 		}
 		n := strings.ToLower(e.Name())
-		if strings.HasSuffix(n, ".gguf") && strings.Contains(n, "mmproj") {
-			return filepath.Join(dir, e.Name())
+		if strings.HasSuffix(n, ".gguf") && strings.Contains(n, "mmproj") && (best == "" || len(e.Name()) < len(best)) {
+			best = e.Name()
 		}
 	}
-	return ""
+	if best == "" {
+		return ""
+	}
+	return filepath.Join(dir, best)
 }
 
 // GGUFCacheDir returns the directory where downloaded GGUFs are stored.
