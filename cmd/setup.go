@@ -299,26 +299,8 @@ func promptSystemd() error {
 		fmt.Printf("Binary already present at %s\n", installPath)
 	}
 
-	unit := `[Unit]
-Description=turbolab AI model server
-After=network.target
-
-[Service]
-ExecStart=/usr/local/bin/turbolab serve
-Restart=on-failure
-RestartSec=5
-StartLimitIntervalSec=60
-StartLimitBurst=3
-KillMode=mixed
-KillSignal=SIGTERM
-TimeoutStopSec=30
-
-[Install]
-WantedBy=multi-user.target
-`
-
 	unitPath := "/etc/systemd/system/turbolab.service"
-	if err := os.WriteFile(unitPath, []byte(unit), 0644); err != nil {
+	if err := os.WriteFile(unitPath, []byte(systemdUnit()), 0644); err != nil {
 		return fmt.Errorf("couldn't write unit file (try sudo): %w", err)
 	}
 
@@ -410,4 +392,25 @@ func turboquantBin() (string, error) {
 		return path, nil
 	}
 	return "", fmt.Errorf("turboquant-server not found — run: turbolab setup")
+}
+
+func systemdUnit() string {
+	return `[Unit]
+Description=turbolab AI model server
+After=network.target
+StartLimitIntervalSec=60
+StartLimitBurst=3
+
+[Service]
+Environment=HOME=%h
+ExecStart=/usr/local/bin/turbolab serve
+Restart=on-failure
+RestartSec=5
+KillMode=mixed
+KillSignal=SIGTERM
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target
+`
 }
