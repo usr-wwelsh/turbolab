@@ -145,6 +145,13 @@ func IsGGUF(modelID string) bool {
 
 func (m *Manager) Start(modelID string) error {
 	m.mu.Lock()
+	m.crashCount = 0
+	m.mu.Unlock()
+	return m.start(modelID)
+}
+
+func (m *Manager) start(modelID string) error {
+	m.mu.Lock()
 
 	if m.running {
 		m.intentional = true
@@ -310,7 +317,6 @@ func (m *Manager) Start(modelID string) error {
 	m.running = true
 	m.loading = true
 	m.intentional = false
-	m.crashCount = 0
 	m.mu.Unlock()
 
 	startedAt := time.Now()
@@ -325,7 +331,7 @@ func (m *Manager) Start(modelID string) error {
 		m.running = false
 		if crashed && uptime < 5*time.Second {
 			m.crashCount++
-		} else if !crashed {
+		} else {
 			m.crashCount = 0
 		}
 		crashCount := m.crashCount
@@ -349,7 +355,7 @@ func (m *Manager) Start(modelID string) error {
 			if restartID == "" {
 				restartID = model
 			}
-			m.Start(restartID)
+			m.start(restartID)
 		}
 	}()
 
